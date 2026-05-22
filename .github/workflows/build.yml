@@ -1,6 +1,5 @@
 name: Build & Push OCI Image
 
-# Trigger: push su main, chiusura di PR con merge su main, manuale
 on:
   push:
     branches: ["main"]
@@ -11,7 +10,6 @@ on:
 
 jobs:
   build:
-    # Su PR: esegui solo se la PR è stata effettivamente mergiata
     if: >
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
@@ -19,53 +17,51 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    # Matrix: builda sia la variante base che quella NVIDIA.
-    # La variante NVIDIA usa akmods per compilare i driver al build time —
-    # quando il kernel CachyOS viene aggiornato nell'immagine, i driver
-    # NVIDIA vengono ri-compilati automaticamente nella stessa build.
-    # "sudo bootc upgrade" aggiorna kernel + driver in un colpo solo.
+    # Matrix: base (senza NVIDIA) e nvidia.
+    # fail-fast: false → se nvidia fallisce (akmods lento/problematico)
+    # la variante base viene comunque pushata.
     strategy:
-      fail-fast: false   # se nvidia fallisce, la variante base viene comunque pushata
+      fail-fast: false
       matrix:
         include:
           - variant: base
-            image_suffix: ""          # ghcr.io/dexmodzz/vortexos
-            build_arg: zena           # caso in build.sh
+            image_suffix: ""         # → ghcr.io/dexmodzz/vortexos
+            build_arg: zena          # caso in build.sh
           - variant: nvidia
-            image_suffix: "-nvidia"   # ghcr.io/dexmodzz/vortexos-nvidia
-            build_arg: zena-nvidia    # caso in build.sh
+            image_suffix: "-nvidia"  # → ghcr.io/dexmodzz/vortexos-nvidia
+            build_arg: zena-nvidia
 
     permissions:
       contents: read
       packages: write
-      id-token: write   # necessario per cosign keyless via OIDC
+      id-token: write  # cosign keyless OIDC
 
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Calcola tag immagine ───────────────────────────────────
+      # ── 2. Calcola nome immagine e tag ────────────────────────────
+      # Tre tag: latest, YYYY-MM-DD, SHA corto (7 char).
+      # Vengono salvati come stringhe semplici (senza il prefisso registry)
+      # e poi combinati con IMAGE_BASE nei passi successivi.
       - name: Calcola tag immagine
         id: tags
         run: |
           OWNER="${{ github.repository_owner }}"
           REPO="${{ github.event.repository.name }}"
           SUFFIX="${{ matrix.image_suffix }}"
-          REGISTRY="ghcr.io"
 
-          # ghcr.io richiede tutto lowercase
-          IMAGE_BASE="${REGISTRY}/${OWNER,,}/${REPO,,}${SUFFIX}"
-
-          DATE_TAG="$(date -u +%Y-%m-%d)"
+          # ghcr.io richiede tutto minuscolo
+          IMAGE_BASE="ghcr.io/${OWNER,,}/${REPO,,}${SUFFIX}"
+          DATE="$(date -u +%Y-%m-%d)"
           SHORT_SHA="${GITHUB_SHA::7}"
 
-          echo "image_base=${IMAGE_BASE}"             >> "$GITHUB_OUTPUT"
-          echo "tag_latest=${IMAGE_BASE}:latest"      >> "$GITHUB_OUTPUT"
-          echo "tag_date=${IMAGE_BASE}:${DATE_TAG}"   >> "$GITHUB_OUTPUT"
-          echo "tag_sha=${IMAGE_BASE}:${SHORT_SHA}"   >> "$GITHUB_OUTPUT"
+          echo "image_base=${IMAGE_BASE}" >> "$GITHUB_OUTPUT"
+          echo "date=${DATE}"             >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}"   >> "$GITHUB_OUTPUT"
 
-      # ── 3. Login su ghcr.io ───────────────────────────────────────
+      # ── 3. Login ghcr.io ─────────────────────────────────────────
       - name: Login su ghcr.io
         uses: docker/login-action@v3
         with:
@@ -73,78 +69,64 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── 4. Installa cosign ────────────────────────────────────────
+      # ── 4. Cosign ────────────────────────────────────────────────
       - name: Installa cosign
         uses: sigstore/cosign-installer@v3
 
       # ── 5. Build con buildah ──────────────────────────────────────
-      # FEDORA_VERSION=42 → immagine base quay.io/fedora/fedora-bootc:42
-      # IMAGE → seleziona il caso (zena | zena-nvidia) in build.sh
-      # La variante NVIDIA include akmods che compila il modulo nvidia
-      # contro il kernel CachyOS-LTO baked nell'immagine.
-      - name: "Build immagine OCI (${{ matrix.variant }})"
-        id: build
+      # FEDORA_VERSION=44 → fedora-bootc:44 (versione stabile attuale).
+      # Verificare con: curl -s https://quay.io/api/v1/repository/fedora/fedora-bootc/tag/
+      # IMAGE seleziona il caso in build.sh (zena | zena-nvidia).
+      - name: "Build OCI (${{ matrix.variant }})"
         run: |
-          IMAGE_BASE="${{ steps.tags.outputs.image_base }}"
-          DATE_TAG="${{ steps.tags.outputs.tag_date }}"
-          SHORT_SHA="${{ steps.tags.outputs.tag_sha }}"
+          IMAGE="${{ steps.tags.outputs.image_base }}"
+          DATE="${{ steps.tags.outputs.date }}"
+          SHA="${{ steps.tags.outputs.short_sha }}"
 
           buildah bud \
             --layers \
-            --build-arg FEDORA_VERSION=42 \
+            --build-arg FEDORA_VERSION=44 \
             --build-arg IMAGE=${{ matrix.build_arg }} \
-            --tag "${IMAGE_BASE}:latest" \
-            --tag "${IMAGE_BASE}:${DATE_TAG}" \
-            --tag "${IMAGE_BASE}:${SHORT_SHA}" \
+            --tag "${IMAGE}:latest" \
+            --tag "${IMAGE}:${DATE}" \
+            --tag "${IMAGE}:${SHA}" \
             .
 
       # ── 6. Push ───────────────────────────────────────────────────
       - name: "Push su ghcr.io (${{ matrix.variant }})"
         id: push
         run: |
-          IMAGE_BASE="${{ steps.tags.outputs.image_base }}"
-          DATE_TAG="${{ steps.tags.outputs.tag_date }}"
-          SHORT_SHA="${{ steps.tags.outputs.tag_sha }}"
+          IMAGE="${{ steps.tags.outputs.image_base }}"
+          DATE="${{ steps.tags.outputs.date }}"
+          SHA="${{ steps.tags.outputs.short_sha }}"
 
-          for TAG in "latest" "${DATE_TAG}" "${SHORT_SHA}"; do
+          for TAG in "latest" "${DATE}" "${SHA}"; do
             buildah push \
-              --digestfile "/tmp/digest-${TAG//:/=}.txt" \
-              "${IMAGE_BASE}:${TAG}" \
-              "docker://${IMAGE_BASE}:${TAG}"
+              --digestfile "/tmp/digest-${TAG}.txt" \
+              "${IMAGE}:${TAG}" \
+              "docker://${IMAGE}:${TAG}"
           done
 
-          DIGEST="$(cat /tmp/digest-latest.txt)"
-          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          # Digest del tag latest usato per la firma cosign
+          echo "digest=$(cat /tmp/digest-latest.txt)" >> "$GITHUB_OUTPUT"
 
-      # ── 7. Firma keyless con cosign ───────────────────────────────
-      # Usa GitHub OIDC come identità — nessuna chiave privata da gestire.
-      # Chiunque può verificare la firma con: cosign verify ghcr.io/dexmodzz/vortexos:latest
-      - name: "Firma immagine con cosign (${{ matrix.variant }})"
+      # ── 7. Firma keyless ─────────────────────────────────────────
+      # Identità verificabile via: cosign verify ghcr.io/dexmodzz/vortexos:latest
+      - name: "Firma con cosign (${{ matrix.variant }})"
         run: |
-          IMAGE_BASE="${{ steps.tags.outputs.image_base }}"
-          DIGEST="${{ steps.push.outputs.digest }}"
-          cosign sign --yes "${IMAGE_BASE}@${DIGEST}"
+          cosign sign --yes \
+            "${{ steps.tags.outputs.image_base }}@${{ steps.push.outputs.digest }}"
         env:
           COSIGN_EXPERIMENTAL: "true"
 
-      # ── 8. Riepilogo build ────────────────────────────────────────
-      - name: "Riepilogo build (${{ matrix.variant }})"
+      # ── 8. Riepilogo ─────────────────────────────────────────────
+      - name: "Riepilogo (${{ matrix.variant }})"
         run: |
-          IMAGE_BASE="${{ steps.tags.outputs.image_base }}"
-          SHORT_SHA="${GITHUB_SHA::7}"
-
+          IMAGE="${{ steps.tags.outputs.image_base }}"
           echo ""
-          echo "═══════════════════════════════════════════════════════════"
-          echo "  ✓ Build ${{ matrix.variant }} completata!"
-          echo "  Immagine: ${IMAGE_BASE}:latest"
-          echo "═══════════════════════════════════════════════════════════"
-          echo ""
-          echo "  Primo switch:"
-          echo "    sudo bootc switch ${IMAGE_BASE}:latest"
-          echo ""
-          echo "  Aggiornamenti futuri (kernel + driver NVIDIA in un colpo):"
-          echo "    sudo bootc upgrade && sudo reboot"
-          echo ""
-          echo "  Rollback:"
-          echo "    sudo bootc rollback && sudo reboot"
-          echo "═══════════════════════════════════════════════════════════"
+          echo "═══════════════════════════════════════════════"
+          echo "  ✓ ${IMAGE}:latest pushata"
+          echo "  Primo switch:  sudo bootc switch ${IMAGE}:latest"
+          echo "  Aggiornamenti: sudo bootc upgrade && sudo reboot"
+          echo "  Rollback:      sudo bootc rollback && sudo reboot"
+          echo "═══════════════════════════════════════════════"

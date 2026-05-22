@@ -34,3 +34,21 @@ README.md
 # --- Workflow GitHub Actions ---
 .github/workflows/build.yml
 .github/workflows/sync-upstream.yml
+.github/workflows/build-iso.yml
+
+# --- Containerfile personalizzato ---
+# Aggiunto COPY system-files/custom / dopo build.sh
+Containerfile
+
+# --- Build scripts modificati per Hyprland ---
+# Questi file divergono da upstream: non devono essere sovrascritti dal sync.
+# dnf.sh:      rimossi COPR niri e xwayland-satellite
+# packages.sh: rimosso niri dalle dipendenze first-boot
+# wm/packages.sh: aggiunti hyprland, waybar, wofi, dunst, kitty, greetd
+build-scripts/modules/base/dnf.sh
+build-scripts/modules/base/packages.sh
+build-scripts/modules/de/wm/packages.sh
+
+# --- ISO blueprint personalizzati ---
+iso/vortexos.toml
+iso/vortexos-nvidia.toml

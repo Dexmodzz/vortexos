@@ -1,6 +1,5 @@
 name: Sync Upstream Zena
 
-# Gira ogni giorno alle 06:00 UTC e su richiesta manuale
 on:
   schedule:
     - cron: "0 6 * * *"
@@ -9,205 +8,173 @@ on:
 jobs:
   sync:
     runs-on: ubuntu-latest
-
     permissions:
-      contents: write        # per fare push del branch di sync
-      pull-requests: write   # per aprire la PR automatica
+      contents: write
+      pull-requests: write
 
     steps:
-      # ── 1. Checkout del fork ──────────────────────────────────
-      - name: Checkout vortexos
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0        # serve tutta la storia per git diff
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── 2. Configura git identity ─────────────────────────────
       - name: Configura git
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # ── 3. Legge l'ultimo SHA upstream via GitHub API ─────────
-      # Usa l'API REST — nessun clone aggiuntivo, più veloce.
+      # ── Legge SHA upstream via GitHub API ────────────────────────
       - name: Leggi SHA upstream
         id: upstream
         run: |
-          UPSTREAM_SHA=$(curl -fsSL \
-            -H "Accept: application/vnd.github+json" \
+          SHA=$(curl -fsSL \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             "https://api.github.com/repos/Zena-Linux/Zena/commits/main" \
             | jq -r '.sha')
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Upstream: ${SHA}"
 
-          echo "sha=${UPSTREAM_SHA}" >> "$GITHUB_OUTPUT"
-          echo "Upstream SHA: ${UPSTREAM_SHA}"
-
-      # ── 4. Legge SHA memorizzato nel fork ─────────────────────
+      # ── Legge SHA memorizzato nel repo ───────────────────────────
       - name: Leggi SHA memorizzato
         id: stored
         run: |
-          # Ignora commenti e righe vuote nel file .upstream-sha
-          STORED_SHA=$(grep -v '^#' .upstream-sha | grep -v '^$' | head -n1 || echo "")
-          echo "sha=${STORED_SHA}" >> "$GITHUB_OUTPUT"
-          echo "Stored SHA: ${STORED_SHA:-<nessuno>}"
+          # Ignora commenti e righe vuote
+          SHA=$(grep -v '^#' .upstream-sha | grep -v '^[[:space:]]*$' | head -n1 || true)
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Stored: ${SHA:-<nessuno>}"
 
-      # ── 5. Controlla se c'è qualcosa da sincronizzare ─────────
-      - name: Verifica se sync necessario
+      # ── Confronta SHA ────────────────────────────────────────────
+      - name: Controlla se sync necessario
         id: check
         run: |
-          UPSTREAM="${{ steps.upstream.outputs.sha }}"
-          STORED="${{ steps.stored.outputs.sha }}"
+          UP="${{ steps.upstream.outputs.sha }}"
+          ST="${{ steps.stored.outputs.sha }}"
 
-          if [ "${UPSTREAM}" = "${STORED}" ]; then
+          if [ "${UP}" = "${ST}" ]; then
             echo "in_sync=true" >> "$GITHUB_OUTPUT"
-            echo "Nessun aggiornamento da upstream. Uscita."
+            echo "Già in sync — nessuna azione."
+          elif [ -z "${ST}" ]; then
+            # Prima esecuzione: salva solo il baseline senza applicare nulla.
+            # Il confronto da zero causerebbe l'applicazione di tutti i file
+            # upstream, sovrascrivendo le nostre personalizzazioni.
+            echo "in_sync=first_run" >> "$GITHUB_OUTPUT"
+            echo "Prima esecuzione: registro il baseline SHA senza applicare diff."
           else
             echo "in_sync=false" >> "$GITHUB_OUTPUT"
-            echo "Aggiornamento disponibile: ${STORED:-<iniziale>} → ${UPSTREAM}"
+            echo "Aggiornamento: ${ST::8} → ${UP::8}"
           fi
 
-      # ── 6. Fetch upstream e determina file cambiati ───────────
+      # ── Prima esecuzione: registra solo il baseline SHA ──────────
+      - name: Registra baseline SHA (prima esecuzione)
+        if: steps.check.outputs.in_sync == 'first_run'
+        run: |
+          SHA="${{ steps.upstream.outputs.sha }}"
+          printf '# SHA upstream baseline — non modificare manualmente\n%s\n' "${SHA}" > .upstream-sha
+          git add .upstream-sha
+          git commit -m "chore: registra SHA upstream baseline Zena"
+          git push
+
+      # ── Fetch upstream ───────────────────────────────────────────
       - name: Fetch upstream Zena
         if: steps.check.outputs.in_sync == 'false'
         run: |
           git remote add upstream https://github.com/Zena-Linux/Zena.git
           git fetch upstream main --no-tags
 
-      - name: Determina file cambiati in upstream
+      # ── Determina file cambiati ──────────────────────────────────
+      - name: Determina file cambiati
         if: steps.check.outputs.in_sync == 'false'
         id: changes
         run: |
-          UPSTREAM_SHA="${{ steps.upstream.outputs.sha }}"
-          STORED_SHA="${{ steps.stored.outputs.sha }}"
-
-          if [ -z "${STORED_SHA}" ]; then
-            # Prima sync: confronta tutto
-            CHANGED=$(git diff --name-only HEAD upstream/main -- \
-              build-scripts/ patches/ Containerfile 2>/dev/null || true)
-          else
-            # Sync incrementale: solo i diff tra i due SHA
-            CHANGED=$(git diff --name-only "${STORED_SHA}...upstream/main" -- \
-              build-scripts/ patches/ Containerfile 2>/dev/null || true)
-          fi
-
-          echo "changed_files<<EOF" >> "$GITHUB_OUTPUT"
+          ST="${{ steps.stored.outputs.sha }}"
+          # Solo i path che non sono nelle nostre zone protette
+          CHANGED=$(git diff --name-only "${ST}...upstream/main" -- \
+            build-scripts/ patches/ 2>/dev/null || true)
+          echo "changed<<EOF" >> "$GITHUB_OUTPUT"
           echo "${CHANGED}" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "File cambiati: ${CHANGED:-<nessuno>}"
 
-          echo "--- File cambiati upstream ---"
-          echo "${CHANGED:-<nessuno>}"
-
-      # ── 7. Leggi la lista file protetti ───────────────────────
-      - name: Leggi PROTECTED_FILES.txt
-        if: steps.check.outputs.in_sync == 'false'
-        id: protected
-        run: |
-          # Normalizza: rimuovi commenti, righe vuote, trailing slash
-          PROTECTED=$(grep -v '^#' PROTECTED_FILES.txt | grep -v '^$' | sed 's|/$||' || true)
-          echo "list<<EOF" >> "$GITHUB_OUTPUT"
-          echo "${PROTECTED}" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
-
-      # ── 8. Crea branch di sync e applica modifiche ────────────
+      # ── Applica modifiche ────────────────────────────────────────
       - name: Applica modifiche non protette
         if: steps.check.outputs.in_sync == 'false'
         id: apply
         run: |
-          UPSTREAM_SHA="${{ steps.upstream.outputs.sha }}"
+          UP="${{ steps.upstream.outputs.sha }}"
           DATE="$(date -u +%Y-%m-%d)"
           BRANCH="sync/upstream-${DATE}"
 
-          # Crea branch dedicato per la PR
           git checkout -b "${BRANCH}"
 
-          CHANGED="${{ steps.changes.outputs.changed_files }}"
-          PROTECTED="${{ steps.protected.outputs.list }}"
-          SKIPPED_FILES=""
-          APPLIED_FILES=""
-          NEAR_CUSTOM_WARNING=""
+          # Carica file protetti (ignora commenti e righe vuote)
+          mapfile -t PROTECTED < <(grep -v '^#' PROTECTED_FILES.txt | grep -v '^[[:space:]]*$' | sed 's|/$||')
+
+          is_protected() {
+            local f="$1"
+            for p in "${PROTECTED[@]}"; do
+              [[ "${f}" == "${p}" || "${f}" == "${p}/"* ]] && return 0
+            done
+            return 1
+          }
+
+          APPLIED=""
+          SKIPPED=""
+          NEAR_CUSTOM=""
 
           while IFS= read -r file; do
             [ -z "${file}" ] && continue
 
-            # Verifica se il file è protetto
-            IS_PROTECTED=false
-            while IFS= read -r prot; do
-              [ -z "${prot}" ] && continue
-              if [[ "${file}" == "${prot}" ]] || [[ "${file}" == "${prot}/"* ]]; then
-                IS_PROTECTED=true
-                break
-              fi
-            done <<< "${PROTECTED}"
-
-            if [ "${IS_PROTECTED}" = "true" ]; then
-              SKIPPED_FILES="${SKIPPED_FILES}\n- \`${file}\` *(protetto — skippato)*"
+            if is_protected "${file}"; then
+              SKIPPED="${SKIPPED}- \`${file}\` *(protetto)*\n"
               continue
             fi
 
-            # Avvisa se il file è vicino alle nostre personalizzazioni
-            if [[ "${file}" == system-files/* ]] || [[ "${file}" == "Containerfile" ]]; then
-              NEAR_CUSTOM_WARNING="${NEAR_CUSTOM_WARNING}\n- \`${file}\` ⚠️ *tocca zone vicine alle personalizzazioni — controlla il diff!*"
+            # Avvisa se il file è vicino alle zone personalizzate
+            if [[ "${file}" == build-scripts/modules/de/* || "${file}" == "Containerfile" ]]; then
+              NEAR_CUSTOM="${NEAR_CUSTOM}- \`${file}\` ⚠️ zona personalizzata — controlla il diff\n"
             fi
 
-            # Applica il file dall'upstream
-            if git show "upstream/main:${file}" > "/tmp/upstream_file" 2>/dev/null; then
+            if git show "upstream/main:${file}" > /tmp/upstream_file 2>/dev/null; then
               mkdir -p "$(dirname "${file}")"
-              cp "/tmp/upstream_file" "${file}"
+              cp /tmp/upstream_file "${file}"
               git add "${file}"
-              APPLIED_FILES="${APPLIED_FILES}\n- \`${file}\`"
+              APPLIED="${APPLIED}- \`${file}\`\n"
             else
-              # Il file esiste solo nel nostro fork (non è in upstream)
-              SKIPPED_FILES="${SKIPPED_FILES}\n- \`${file}\` *(non trovato in upstream — skippato)*"
+              SKIPPED="${SKIPPED}- \`${file}\` *(non in upstream)*\n"
             fi
+          done <<< "${{ steps.changes.outputs.changed }}"
 
-          done <<< "${CHANGED}"
-
-          # Aggiorna il file SHA tracciato
-          cat > .upstream-sha << EOF
-          # SHA dell'ultimo commit di Zena-Linux/Zena sincronizzato in questo fork.
-          # Aggiornato automaticamente dal workflow sync-upstream.yml
-          ${UPSTREAM_SHA}
-          EOF
+          # Aggiorna SHA tracciato
+          printf '# SHA upstream — non modificare manualmente\n%s\n' "${UP}" > .upstream-sha
           git add .upstream-sha
 
-          # Salva i risultati come variabili per i passi successivi
-          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
-          echo "date=${DATE}" >> "$GITHUB_OUTPUT"
-          echo "applied_files<<EOFAPPLIED" >> "$GITHUB_OUTPUT"
-          printf '%b\n' "${APPLIED_FILES:-_(nessun file applicato)_}" >> "$GITHUB_OUTPUT"
-          echo "EOFAPPLIED" >> "$GITHUB_OUTPUT"
-          echo "skipped_files<<EOFSKIPPED" >> "$GITHUB_OUTPUT"
-          printf '%b\n' "${SKIPPED_FILES:-_(nessun file skippato)_}" >> "$GITHUB_OUTPUT"
-          echo "EOFSKIPPED" >> "$GITHUB_OUTPUT"
-          echo "near_custom_warning<<EOFWARN" >> "$GITHUB_OUTPUT"
-          printf '%b\n' "${NEAR_CUSTOM_WARNING}" >> "$GITHUB_OUTPUT"
-          echo "EOFWARN" >> "$GITHUB_OUTPUT"
+          echo "branch=${BRANCH}"   >> "$GITHUB_OUTPUT"
+          echo "date=${DATE}"       >> "$GITHUB_OUTPUT"
 
-          # Controlla se c'è effettivamente qualcosa da committare
+          # Salva risultati in file per il passo PR (evita problemi heredoc)
+          printf '%b' "${APPLIED:-*(nessun file applicato)*}" > /tmp/applied.txt
+          printf '%b' "${SKIPPED:-*(nessun file skippato)*}"  > /tmp/skipped.txt
+          printf '%b' "${NEAR_CUSTOM}"                        > /tmp/near_custom.txt
+
           if git diff --cached --quiet; then
             echo "has_changes=false" >> "$GITHUB_OUTPUT"
           else
             echo "has_changes=true" >> "$GITHUB_OUTPUT"
           fi
 
-      # ── 9. Commit e push del branch ───────────────────────────
-      - name: Commit e push branch di sync
+      # ── Commit e push ────────────────────────────────────────────
+      - name: Commit branch di sync
         if: >
           steps.check.outputs.in_sync == 'false' &&
           steps.apply.outputs.has_changes == 'true'
         run: |
-          BRANCH="${{ steps.apply.outputs.branch }}"
           DATE="${{ steps.apply.outputs.date }}"
+          UP="${{ steps.upstream.outputs.sha }}"
+          git commit -m "chore: sync upstream Zena ${DATE} (${UP::8})"
+          git push origin "${{ steps.apply.outputs.branch }}"
 
-          git commit -m "chore: sync upstream Zena ${DATE}
-
-          Aggiornamento automatico da Zena-Linux/Zena@${{ steps.upstream.outputs.sha }}
-
-          Co-authored-by: github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-
-          git push origin "${BRANCH}"
-
-      # ── 10. Apre PR automatica ────────────────────────────────
+      # ── Apri PR ──────────────────────────────────────────────────
       - name: Apri Pull Request
         if: >
           steps.check.outputs.in_sync == 'false' &&
@@ -215,32 +182,28 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          UPSTREAM_SHA="${{ steps.upstream.outputs.sha }}"
-          SHORT_SHA="${UPSTREAM_SHA::8}"
+          UP="${{ steps.upstream.outputs.sha }}"
           DATE="${{ steps.apply.outputs.date }}"
           BRANCH="${{ steps.apply.outputs.branch }}"
 
-          APPLIED="${{ steps.apply.outputs.applied_files }}"
-          SKIPPED="${{ steps.apply.outputs.skipped_files }}"
-          WARNING="${{ steps.apply.outputs.near_custom_warning }}"
+          APPLIED="$(cat /tmp/applied.txt)"
+          SKIPPED="$(cat /tmp/skipped.txt)"
+          NEAR="$(cat /tmp/near_custom.txt)"
 
-          # Costruisce il warning condizionale
-          if [ -n "${WARNING// /}" ]; then
-            WARN_BLOCK="## ⚠️ File vicini alle personalizzazioni
-          Controlla attentamente prima del merge — upstream ha toccato zone adiacenti ai nostri override:
-          ${WARNING}"
+          # Costruisce warning condizionale
+          if [ -n "${NEAR// /}" ]; then
+            WARN="## ⚠️ Zone vicine alle personalizzazioni
+          Controlla attentamente prima del merge:
+          ${NEAR}"
           else
-            WARN_BLOCK="*Nessun file vicino alle personalizzazioni vortexos.*"
+            WARN="*Nessun file vicino alle personalizzazioni vortexos.*"
           fi
 
-          gh pr create \
-            --base main \
-            --head "${BRANCH}" \
-            --title "chore: sync upstream Zena ${DATE}" \
-            --body "$(cat << EOF
+          # Scrive body su file — evita problemi con heredoc e variabili multiline
+          cat > /tmp/pr_body.md << PREOF
           ## Sync automatico da upstream Zena
 
-          **Commit upstream:** [\`${SHORT_SHA}\`](https://github.com/Zena-Linux/Zena/commit/${UPSTREAM_SHA})
+          **Commit upstream:** [\`${UP::8}\`](https://github.com/Zena-Linux/Zena/commit/${UP})
           **Data:** ${DATE}
 
           ---
@@ -253,16 +216,21 @@ jobs:
 
           ---
 
-          ${WARN_BLOCK}
+          ${WARN}
 
           ---
 
-          > Generato automaticamente da \`.github/workflows/sync-upstream.yml\`
-          > Controlla il diff prima di fare merge — in particolare \`Containerfile\` e \`build-scripts/\`.
-          EOF
-          )"
+          > Generato da \`.github/workflows/sync-upstream.yml\`
+          > Controlla il diff prima di fare merge.
+          PREOF
 
-      # ── Log finale se già in sync ─────────────────────────────
+          gh pr create \
+            --base main \
+            --head "${BRANCH}" \
+            --title "chore: sync upstream Zena ${DATE}" \
+            --body-file /tmp/pr_body.md
+
+      # ── Log finale ───────────────────────────────────────────────
       - name: Già in sync
         if: steps.check.outputs.in_sync == 'true'
-        run: echo "Il fork è già allineato con upstream Zena. Nessuna PR aperta."
+        run: echo "Il fork è già allineato con upstream. Nessuna PR aperta."
