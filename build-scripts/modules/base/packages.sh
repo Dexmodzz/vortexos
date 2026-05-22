@@ -125,12 +125,9 @@ packages=(
 
 dnf5 -y install "${packages[@]}"
 
-# Dependencies for the First Boot Setup (zena-setup GUI — usa un compositor Wayland come runtime)
-# niri rimosso: ora il sistema usa Hyprland come compositor principale.
-# TODO: se zena-setup richiede niri per girare, sostituirlo con un
-#       equivalente che funzioni sotto Hyprland (es. avviarlo come float window)
-#       o adattare il servizio zena-setup.service.
+# Dependencies for the First Boot Setup
 packages=(
+  niri
   python3-gobject
   gtk4
   gtk4-layer-shell
@@ -138,6 +135,7 @@ packages=(
 )
 
 dnf5 -y install "${packages[@]}" --setopt=install_weak_deps=False
+mv /usr/share/wayland-sessions/niri.desktop /usr/share/wayland-sessions/niri.desktop.disabled
 
 # First Boot Setup GUI
 curl -fsSL https://github.com/Zena-Linux/Zena-Setup/raw/refs/heads/main/zena-setup | install -m 755 /dev/stdin /usr/libexec/zena-setup

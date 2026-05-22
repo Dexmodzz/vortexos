@@ -19,10 +19,4 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=tmpfs,dst=/tmp \
     /ctx/build.sh
 
-# Le personalizzazioni vortexos vengono copiate DOPO build.sh così
-# sovrascrivono qualsiasi file di sistema-files/wm/ con precedenza garantita.
-# Questi file sono elencati in PROTECTED_FILES.txt e NON devono essere
-# sovrascritti dal sync upstream automatico.
-COPY system-files/custom /
-
 RUN bootc container lint

@@ -20,23 +20,6 @@ packages=(
   xdg-desktop-portal-gtk
   xdg-desktop-portal-gnome
   wl-clipboard
-
-  # Hyprland ecosystem (sostituisce niri)
-  hyprland
-  hyprland-protocols
-  xdg-desktop-portal-hyprland
-  hypridle
-  hyprlock
-  hyprpaper
-
-  # Display manager
-  greetd
-
-  # Shell Hyprland: barra, launcher, notifiche, terminale
-  waybar
-  wofi
-  dunst
-  kitty
 )
 dnf5 -y install "${packages[@]}" --exclude=matugen --exclude=noctalia-qs
 dnf5 -y install nautilus-python matugen --releasever=44 --disablerepo='*copr*'
@@ -58,13 +41,10 @@ rm -rf "${XDG_EXT_TMPDIR}"
 
 dconf update
 systemctl set-default graphical.target
+mv /usr/share/wayland-sessions/niri.desktop.disabled /usr/share/wayland-sessions/niri.desktop
+sed -i 's|^Exec=.*|Exec=bash -c "niri-session > /dev/null 2>\&1"|' \
+  /usr/share/wayland-sessions/niri.desktop
 
-# niri rimosso: niente più manipolazione del niri.desktop
-
-# Aggiorna la sessione mango (DMS) con il launcher corretto
 sed -i 's|^Exec=.*|Exec=bash -c "mango -s mango-session > /dev/null 2>\&1"|' \
   /usr/share/wayland-sessions/mango.desktop
-
-# Kitty come terminale xdg di default
-echo "kitty.desktop" > /etc/xdg/xdg-terminals.list
 
