@@ -111,11 +111,24 @@ jobs:
           echo "Pulling: ${IMAGE}"
           sudo podman pull "${IMAGE}"
 
+          # bootc-image-builder usa ID da /usr/lib/os-release per identificare
+          # il distro. Se ID=zena (branding upstream) fallisce con "zena-43 not found".
+          # Creiamo un'immagine locale con ID=fedora mantenendo tutto il resto.
+          LOCAL_IMAGE="${IMAGE}-bib"
+          TMPCONTAINER=$(sudo podman create "${IMAGE}" /bin/true)
+          sudo podman cp "${TMPCONTAINER}:/usr/lib/os-release" /tmp/os-release-orig
+          sudo sed 's|^ID=.*|ID=fedora|' /tmp/os-release-orig | sudo tee /tmp/os-release-patched > /dev/null
+          sudo podman cp /tmp/os-release-patched "${TMPCONTAINER}:/usr/lib/os-release"
+          sudo podman commit "${TMPCONTAINER}" "${LOCAL_IMAGE}"
+          sudo podman rm "${TMPCONTAINER}"
+          echo "Immagine locale con ID=fedora: ${LOCAL_IMAGE}"
+
       - name: "Build ISO (${{ matrix.variant }})"
         run: |
           OWNER="${{ github.repository_owner }}"
           REPO="${{ github.event.repository.name }}"
           IMAGE="ghcr.io/${OWNER,,}/${REPO,,}${{ matrix.suffix }}:latest"
+          LOCAL_IMAGE="${IMAGE}-bib"
           CONFIG="${{ matrix.config }}"
 
           echo "Immagine: ${IMAGE}"
@@ -132,7 +145,7 @@ jobs:
             --rootfs xfs \
             --config /config.toml \
             --local \
-            "${IMAGE}"
+            "${LOCAL_IMAGE}"
 
       # ── 6. Rinomina ISO ───────────────────────────────────────────
       - name: Rinomina ISO
