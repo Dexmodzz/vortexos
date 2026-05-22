@@ -23,7 +23,6 @@ packages=(
 
   # Hyprland ecosystem (sostituisce niri)
   hyprland
-  hyprland-protocols
   xdg-desktop-portal-hyprland
   hypridle
   hyprlock

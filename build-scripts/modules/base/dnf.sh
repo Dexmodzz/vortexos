@@ -26,6 +26,9 @@ coprs=(
   avengemedia/dms
 
   che/nerd-fonts
+
+  # Hyprland ecosystem (non nei repo Fedora standard nella bootc image)
+  solopasha/hyprland
 )
 
 for copr in "${coprs[@]}"; do
