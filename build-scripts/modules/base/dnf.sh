@@ -33,7 +33,7 @@ for copr in "${coprs[@]}"; do
 done
 
 echo "priority=3" | tee -a /etc/yum.repos.d/_copr:copr.fedorainfracloud.org:avengemedia:danklinux.repo
-dnf5 -y config-manager setopt "*terra*".priority=3 "*terra*".exclude="topgrade *scx-* steam python3-protobuf zlib-devel" && \
+dnf5 -y config-manager setopt "*terra*".priority=3 "*terra*".exclude="topgrade *scx-* steam python3-protobuf zlib-devel hyprland* hypridle* hyprlock* hyprpaper* hyprutils* aquamarine* xdg-desktop-portal-hyprland*" && \
 dnf5 -y config-manager setopt "terra-mesa".enabled=true
 dnf5 -y config-manager setopt "*rpmfusion*".priority=5 "*rpmfusion*".exclude="mesa-*"
 dnf5 -y config-manager setopt "*fedora*".exclude="mesa-* kernel-core-* kernel-modules-* kernel-uki-virt-*"
