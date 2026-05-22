@@ -32,10 +32,9 @@ packages=(
 )
 dnf5 -y install "${packages[@]}" --exclude=matugen --exclude=noctalia-qs
 
-# Hyprland: installato separatamente con --allowerasing perché aquamarine
-# (dipendenza dal COPR solopasha/hyprland) richiede libdisplay-info.so.2,
-# versione più nuova di quella presente nel container base Fedora 44.
-dnf5 -y install --allowerasing \
+# Hyprland: installato dopo libdisplay-info.so.2 già presente (pre-installata
+# in dnf.sh con priorità COPR solopasha/hyprland = 1).
+dnf5 -y install \
   hyprland \
   xdg-desktop-portal-hyprland \
   hypridle \

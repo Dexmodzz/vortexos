@@ -41,3 +41,11 @@ dnf5 -y config-manager setopt "*terra*".priority=3 "*terra*".exclude="nerd-fonts
 dnf5 -y config-manager setopt "terra-mesa".enabled=true
 dnf5 -y config-manager setopt "*rpmfusion*".priority=5 "*rpmfusion*".exclude="mesa-*"
 dnf5 -y config-manager setopt "*fedora*".exclude="mesa-* kernel-core-* kernel-modules-* kernel-uki-virt-*"
+
+# Il COPR solopasha/hyprland ha aquamarine che richiede libdisplay-info.so.2.
+# Priorità 1 garantisce che la sua versione di libdisplay-info vinca su quella
+# Fedora (.so.1), e la installiamo subito — prima che altri moduli installino
+# pacchetti che si agganciano alla .so.1 rendendo impossibile il cambio.
+dnf5 -y config-manager setopt \
+  "copr:copr.fedorainfracloud.org:solopasha:hyprland".priority=1
+dnf5 -y install --allowerasing libdisplay-info
