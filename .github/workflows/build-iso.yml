@@ -77,38 +77,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # ── 2. Login ghcr.io ─────────────────────────────────────────
-      # docker/login-action scrive le credenziali in ~/.docker/config.json.
-      # Questo file viene montato dentro bootc-image-builder nel passo 5
-      # così il container può pullare l'immagine vortexos da ghcr.io.
-      - name: Login su ghcr.io
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── 3. Installa podman ───────────────────────────────────────
+      # ── 2. Installa podman ───────────────────────────────────────
       - name: Installa podman
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y podman
           podman --version
 
+      # ── 3. Login ghcr.io (root) ──────────────────────────────────
+      # sudo podman pull usa le credenziali di root (/run/containers/0/auth.json).
+      # docker/login-action scrive in ~/.docker/config.json dell'utente runner,
+      # non accessibile da root → si usa direttamente sudo podman login.
+      - name: Login su ghcr.io
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin
+
       # ── 4. Prepara directory output ──────────────────────────────
       - name: Prepara directory output
         run: mkdir -p output
 
       # ── 5. Build ISO con bootc-image-builder ─────────────────────
-      # Boot ordine operazioni:
-      # a) podman pull esplicito dell'immagine vortexos (usa le credenziali
-      #    già configurate da docker/login-action nel passo 2)
-      # b) bootc-image-builder con --local (usa l'immagine già pullata)
-      #    così non deve ri-autenticarsi autonomamente
-      #
+      # Pull esplicito + --local: bootc-image-builder non deve ri-autenticarsi.
       # Note sicurezza:
-      # - label=disable: Ubuntu usa AppArmor, non SELinux → label=type:unconfined_t
-      #   (opzione SELinux) causerebbe errore sul runner ubuntu-latest
+      # - label=disable: Ubuntu usa AppArmor, non SELinux
       # - --privileged: necessario per loop devices usati da osbuild
       - name: "Pull immagine OCI (${{ matrix.variant }})"
         run: |
