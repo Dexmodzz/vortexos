@@ -75,14 +75,14 @@ jobs:
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # ── 2. Login ghcr.io ─────────────────────────────────────────
       # docker/login-action scrive le credenziali in ~/.docker/config.json.
       # Questo file viene montato dentro bootc-image-builder nel passo 5
       # così il container può pullare l'immagine vortexos da ghcr.io.
       - name: Login su ghcr.io
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -100,14 +100,24 @@ jobs:
         run: mkdir -p output
 
       # ── 5. Build ISO con bootc-image-builder ─────────────────────
-      # bootc-image-builder gira come container privilegiato e:
-      #   - pulisce l'immagine OCI da ghcr.io (autenticandosi via auth.json)
-      #   - genera una ISO Anaconda che al termine dell'install esegue
-      #     il kickstart (bootc switch verso la nostra immagine)
+      # Boot ordine operazioni:
+      # a) podman pull esplicito dell'immagine vortexos (usa le credenziali
+      #    già configurate da docker/login-action nel passo 2)
+      # b) bootc-image-builder con --local (usa l'immagine già pullata)
+      #    così non deve ri-autenticarsi autonomamente
       #
-      # Mount chiave:
-      #   ~/.docker/config.json → /run/containers/0/auth.json
-      #   Permette a bootc-image-builder di pullare immagini private da ghcr.io
+      # Note sicurezza:
+      # - label=disable: Ubuntu usa AppArmor, non SELinux → label=type:unconfined_t
+      #   (opzione SELinux) causerebbe errore sul runner ubuntu-latest
+      # - --privileged: necessario per loop devices usati da osbuild
+      - name: "Pull immagine OCI (${{ matrix.variant }})"
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.event.repository.name }}"
+          IMAGE="ghcr.io/${OWNER,,}/${REPO,,}${{ matrix.suffix }}:latest"
+          echo "Pulling: ${IMAGE}"
+          sudo podman pull "${IMAGE}"
+
       - name: "Build ISO (${{ matrix.variant }})"
         run: |
           OWNER="${{ github.repository_owner }}"
@@ -115,19 +125,19 @@ jobs:
           IMAGE="ghcr.io/${OWNER,,}/${REPO,,}${{ matrix.suffix }}:latest"
           CONFIG="${{ matrix.config }}"
 
-          echo "Immagine sorgente: ${IMAGE}"
-          echo "Config:            ${CONFIG}"
+          echo "Immagine: ${IMAGE}"
+          echo "Config:   ${CONFIG}"
 
           sudo podman run --rm \
             --privileged \
-            --pull=newer \
-            --security-opt label=type:unconfined_t \
+            --security-opt label=disable \
             -v "$(pwd)/output:/output" \
             -v "$(pwd)/${CONFIG}:/config.toml:ro" \
-            -v "${HOME}/.docker/config.json:/run/containers/0/auth.json:ro" \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
             ghcr.io/osbuild/bootc-image-builder:latest \
             --type anaconda-iso \
             --config /config.toml \
+            --local \
             "${IMAGE}"
 
       # ── 6. Rinomina ISO ───────────────────────────────────────────
@@ -155,7 +165,7 @@ jobs:
 
       # ── 7. Carica su GitHub Release ──────────────────────────────
       - name: "Pubblica ISO su GitHub Release (${{ matrix.variant }})"
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: "iso-${{ github.run_number }}"
           name: "vortexos ISO — build ${{ github.run_number }}"
