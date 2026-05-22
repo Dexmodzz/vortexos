@@ -42,11 +42,12 @@ dnf5 -y config-manager setopt "terra-mesa".enabled=true
 dnf5 -y config-manager setopt "*rpmfusion*".priority=5 "*rpmfusion*".exclude="mesa-*"
 dnf5 -y config-manager setopt "*fedora*".exclude="mesa-* kernel-core-* kernel-modules-* kernel-uki-virt-*"
 
-# aquamarine (dep di hyprland) richiede libdisplay-info.so.2 che non esiste
-# nei repo Fedora 44 standard del container base. Il COPR solopasha/hyprland
-# la fornisce: installiamo aquamarine+libdisplay-info esplicitamente qui,
-# prima di qualsiasi altro pacchetto, usando solo il COPR come sorgente.
-# Così niente si aggancia alla .so.1 e il resolver di dnf5 trova .so.2.
+# aquamarine (dep di hyprland) richiede libdisplay-info.so.2.
+# Il COPR solopasha/hyprland la fornisce, ma con tutti i repo attivi dnf5
+# sceglie la versione Fedora (.so.1). Soluzione in due passi:
+# 1) installa libdisplay-info SOLO dal COPR → .so.2 ora disponibile
+# 2) installa aquamarine con tutti i repo → libinput/libseat/libwayland trovati
 dnf5 -y install --allowerasing \
   --repo='copr:copr.fedorainfracloud.org:solopasha:hyprland' \
-  aquamarine libdisplay-info
+  libdisplay-info
+dnf5 -y install --allowerasing aquamarine
