@@ -1,0 +1,155 @@
+name: Build & Push OCI Image
+
+# Trigger: push su main, chiusura di PR con merge su main, manuale
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    types: [closed]
+    branches: ["main"]
+  workflow_dispatch:
+
+# Per push su PR che non hanno ancora fatto merge, non buildare
+# (ottimizzazione: evita doppie build)
+jobs:
+  build:
+    # Su PR: esegui solo se la PR è stata effettivamente mergiata
+    if: >
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+
+    runs-on: ubuntu-latest
+
+    # Permessi necessari per:
+    # - leggere il contenuto del repo (contents: read)
+    # - autenticarsi su ghcr.io (packages: write)
+    # - firmare con cosign via OIDC (id-token: write)
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      # ── 1. Checkout del repo ──────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Calcola tag immagine ───────────────────────────────
+      # L'immagine su ghcr.io si chiama come il repo, in minuscolo.
+      # Tre tag: latest, YYYY-MM-DD, SHA corto del commit.
+      - name: Calcola tag immagine
+        id: tags
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.event.repository.name }}"
+          REGISTRY="ghcr.io"
+
+          # Normalizza in minuscolo (ghcr.io richiede lowercase)
+          IMAGE_BASE="${REGISTRY}/${OWNER,,}/${REPO,,}"
+
+          DATE_TAG="$(date -u +%Y-%m-%d)"
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          echo "image_base=${IMAGE_BASE}" >> "$GITHUB_OUTPUT"
+          echo "tag_latest=${IMAGE_BASE}:latest"   >> "$GITHUB_OUTPUT"
+          echo "tag_date=${IMAGE_BASE}:${DATE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "tag_sha=${IMAGE_BASE}:${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+          # Lista completa usata da buildah push e cosign
+          echo "full_tags=${IMAGE_BASE}:latest ${IMAGE_BASE}:${DATE_TAG} ${IMAGE_BASE}:${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+
+      # ── 3. Login su ghcr.io ───────────────────────────────────
+      # GITHUB_TOKEN è disponibile automaticamente nelle Actions.
+      - name: Login su ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 4. Installa cosign (firma keyless) ────────────────────
+      - name: Installa cosign
+        uses: sigstore/cosign-installer@v3
+
+      # ── 5. Build con buildah ──────────────────────────────────
+      # buildah è lo standard per immagini bootc/OCI senza daemon.
+      # Il Containerfile richiede i due ARG: FEDORA_VERSION e IMAGE.
+      # IMAGE=zena seleziona il caso nel build.sh di Zena.
+      - name: Build immagine OCI
+        id: build
+        run: |
+          IMAGE_BASE="${{ steps.tags.outputs.image_base }}"
+          DATE_TAG="${{ steps.tags.outputs.tag_date }}"
+          SHORT_SHA="${{ steps.tags.outputs.tag_sha }}"
+
+          # buildah bud legge il Containerfile nella directory corrente
+          buildah bud \
+            --layers \
+            --build-arg FEDORA_VERSION=42 \
+            --build-arg IMAGE=zena \
+            --tag "${IMAGE_BASE}:latest" \
+            --tag "${IMAGE_BASE}:${DATE_TAG##*:}" \
+            --tag "${IMAGE_BASE}:${SHORT_SHA##*:}" \
+            .
+
+          # Salva l'image ID per la firma cosign
+          IMAGE_ID="$(buildah images --format '{{.ID}}' "${IMAGE_BASE}:latest")"
+          echo "image_id=${IMAGE_ID}" >> "$GITHUB_OUTPUT"
+
+      # ── 6. Push tutti i tag ───────────────────────────────────
+      - name: Push su ghcr.io
+        id: push
+        run: |
+          IMAGE_BASE="${{ steps.tags.outputs.image_base }}"
+          DATE_TAG="${{ steps.tags.outputs.tag_date }}"
+          SHORT_SHA="${{ steps.tags.outputs.tag_sha }}"
+
+          for TAG in "latest" "${DATE_TAG##*:}" "${SHORT_SHA##*:}"; do
+            echo "Pushing ${IMAGE_BASE}:${TAG} ..."
+            buildah push \
+              --digestfile "/tmp/digest-${TAG}.txt" \
+              "${IMAGE_BASE}:${TAG}" \
+              "docker://${IMAGE_BASE}:${TAG}"
+          done
+
+          # Usa il digest del tag latest per la firma
+          DIGEST="$(cat /tmp/digest-latest.txt)"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+
+      # ── 7. Firma keyless con cosign (GitHub OIDC / Sigstore) ──
+      # La firma keyless usa il token OIDC di GitHub Actions come
+      # identità verificabile — nessuna chiave privata da gestire.
+      - name: Firma immagine con cosign
+        run: |
+          IMAGE_BASE="${{ steps.tags.outputs.image_base }}"
+          DIGEST="${{ steps.push.outputs.digest }}"
+
+          # Firma il digest (più stabile dei tag mutabili)
+          cosign sign --yes "${IMAGE_BASE}@${DIGEST}"
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+
+      # ── 8. Stampa comandi bootc per l'utente ─────────────────
+      - name: Comandi bootc per aggiornamento
+        run: |
+          IMAGE_BASE="${{ steps.tags.outputs.image_base }}"
+          SHORT_SHA="${{ steps.tags.outputs.tag_sha }}"
+
+          echo ""
+          echo "═══════════════════════════════════════════════════════"
+          echo "  Build completata! Comandi bootc:"
+          echo "═══════════════════════════════════════════════════════"
+          echo ""
+          echo "  Primo switch (da un sistema Fedora bootc esistente):"
+          echo "    sudo bootc switch ${IMAGE_BASE}:latest"
+          echo ""
+          echo "  Aggiornamento (dopo il primo switch):"
+          echo "    sudo bootc upgrade"
+          echo ""
+          echo "  Rollback a build precedente:"
+          echo "    sudo bootc rollback"
+          echo ""
+          echo "  Tag specifico del commit appena buildato:"
+          echo "    sudo bootc switch ${SHORT_SHA}"
+          echo "═══════════════════════════════════════════════════════"

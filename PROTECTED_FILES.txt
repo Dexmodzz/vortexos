@@ -1,0 +1,36 @@
+# ============================================================
+# PROTECTED_FILES.txt
+# File e directory che NON devono MAI essere sovrascritti
+# dal workflow automatico di sync con upstream Zena.
+#
+# Formato:
+#   - Una riga per path (relativo alla root del repo)
+#   - Le righe che iniziano con # sono commenti
+#   - I path che terminano con / proteggono l'intera directory
+# ============================================================
+
+# --- Directory personalizzazioni vortexos ---
+# Tutto sotto system-files/custom/ è nostro e non tocca upstream
+system-files/custom/
+
+# File di configurazione specifici custom
+system-files/custom/etc/hypr/hyprland.conf
+system-files/custom/etc/hypr/hyprpaper.conf
+system-files/custom/etc/hypr/hypridle.conf
+system-files/custom/etc/greetd/config.toml
+system-files/custom/etc/waybar/config
+system-files/custom/etc/waybar/style.css
+system-files/custom/etc/systemd/system/multi-user.target.wants/greetd.service
+
+# --- Questo file stesso ---
+PROTECTED_FILES.txt
+
+# --- SHA upstream tracciato ---
+.upstream-sha
+
+# --- README personalizzato ---
+README.md
+
+# --- Workflow GitHub Actions ---
+.github/workflows/build.yml
+.github/workflows/sync-upstream.yml

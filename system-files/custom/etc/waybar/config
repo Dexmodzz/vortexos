@@ -1,0 +1,98 @@
+// ============================================================
+// waybar/config — barra di sistema vortexos (minimal)
+// Posizione nel sistema: /etc/waybar/config
+// Documentazione: https://github.com/Alexays/Waybar/wiki
+// ============================================================
+{
+    "layer": "top",
+    "position": "top",
+    "height": 32,
+    "spacing": 4,
+    "margin-top": 4,
+    "margin-left": 8,
+    "margin-right": 8,
+
+    // Layout: workspace e titolo a sinistra, orologio al centro, status a destra
+    "modules-left":   ["hyprland/workspaces", "hyprland/submap"],
+    "modules-center": ["hyprland/window"],
+    "modules-right":  ["pulseaudio", "network", "cpu", "memory", "battery", "clock", "tray"],
+
+    // --- Moduli sinistra ---
+    "hyprland/workspaces": {
+        "format": "{name}",
+        "on-click": "activate",
+        "sort-by-number": true
+    },
+
+    "hyprland/submap": {
+        "format": "  {}",
+        "max-length": 20,
+        "tooltip": false
+    },
+
+    // --- Centro ---
+    "hyprland/window": {
+        "max-length": 60,
+        "separate-outputs": true
+    },
+
+    // --- Moduli destra ---
+    "clock": {
+        "format": " {:%H:%M}",
+        "format-alt": " {:%Y-%m-%d %H:%M:%S}",
+        "tooltip-format": "<big>{:%A %d %B %Y}</big>\n<tt><small>{calendar}</small></tt>"
+    },
+
+    "cpu": {
+        "format": " {usage}%",
+        "tooltip": false,
+        "interval": 2
+    },
+
+    "memory": {
+        "format": " {used:.1f}G",
+        "interval": 5
+    },
+
+    "battery": {
+        "interval": 60,
+        "states": {
+            "good": 80,
+            "warning": 30,
+            "critical": 15
+        },
+        "format": "{icon} {capacity}%",
+        "format-charging": " {capacity}%",
+        "format-plugged": " {capacity}%",
+        "format-alt": "{time} {icon}",
+        "format-icons": ["", "", "", "", ""]
+    },
+
+    "network": {
+        "format-wifi": " {signalStrength}%",
+        "format-ethernet": " {ipaddr}",
+        "format-linked": " (no IP)",
+        "format-disconnected": "⚠ Disconnesso",
+        "format-alt": "{ifname}: {ipaddr}/{cidr}",
+        "tooltip-format": "{essid} ({ifname}) — {ipaddr}/{cidr}\nGateway: {gwaddr}"
+    },
+
+    "pulseaudio": {
+        "format": "{icon} {volume}%",
+        "format-bluetooth": " {icon} {volume}%",
+        "format-bluetooth-muted": "  ",
+        "format-muted": " ",
+        "format-icons": {
+            "headphone": "",
+            "headset": "",
+            "default": ["", "", ""]
+        },
+        "on-click": "pavucontrol",
+        "tooltip-format": "{desc} — {volume}%"
+    },
+
+    "tray": {
+        "icon-size": 16,
+        "spacing": 8
+    }
+}
