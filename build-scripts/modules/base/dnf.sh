@@ -32,6 +32,8 @@ for copr in "${coprs[@]}"; do
     dnf5 -y copr enable "$copr"
 done
 
+dnf5 -y copr enable solopasha/hyprland
+
 echo "priority=3" | tee -a /etc/yum.repos.d/_copr:copr.fedorainfracloud.org:avengemedia:danklinux.repo
 dnf5 -y config-manager setopt "*terra*".priority=3 "*terra*".exclude="topgrade *scx-* steam python3-protobuf zlib-devel hyprland* hypridle* hyprlock* hyprpaper* hyprutils* aquamarine* xdg-desktop-portal-hyprland*" && \
 dnf5 -y config-manager setopt "terra-mesa".enabled=true

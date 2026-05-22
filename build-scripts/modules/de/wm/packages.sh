@@ -32,7 +32,10 @@ packages=(
 )
 dnf5 -y install "${packages[@]}" --exclude=matugen --exclude=noctalia-qs
 
-# Hyprland: disponibile nei repo ufficiali Fedora 45+
+# Pre-installa libdisplay-info da repo ufficiali F45 (solopasha's aquamarine richiede .so.2)
+dnf5 -y install libdisplay-info
+
+# Hyprland: solopasha COPR (rawhide chroot)
 dnf5 -y install \
   hyprland \
   xdg-desktop-portal-hyprland \
