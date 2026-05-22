@@ -32,6 +32,8 @@ for copr in "${coprs[@]}"; do
     dnf5 -y copr enable "$copr"
 done
 
+# F43 è una release stabile → rilevato come fedora-43-x86_64 (non rawhide).
+# I pacchetti fc43 di solopasha usano libdisplay-info.so.2 (0.2.0), disponibile in F43.
 dnf5 -y copr enable solopasha/hyprland
 
 echo "priority=3" | tee -a /etc/yum.repos.d/_copr:copr.fedorainfracloud.org:avengemedia:danklinux.repo

@@ -32,10 +32,10 @@ packages=(
 )
 dnf5 -y install "${packages[@]}" --exclude=matugen --exclude=noctalia-qs
 
-# Pre-installa libdisplay-info da repo ufficiali F45 (solopasha's aquamarine richiede .so.2)
+# Pre-installa libdisplay-info da repo ufficiali F43 (solopasha's aquamarine richiede .so.2)
 dnf5 -y install libdisplay-info
 
-# Hyprland: solopasha COPR (rawhide chroot)
+# Hyprland: solopasha COPR (fc43 chroot, richiede libdisplay-info.so.2)
 dnf5 -y install \
   hyprland \
   xdg-desktop-portal-hyprland \

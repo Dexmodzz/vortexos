@@ -74,8 +74,8 @@ jobs:
         uses: sigstore/cosign-installer@v3
 
       # ── 5. Build con buildah ──────────────────────────────────────
-      # FEDORA_VERSION=45: F44 ha libdisplay-info.so.1; aquamarine dal COPR
-      # solopasha/hyprland richiede .so.2 disponibile da F45 in poi.
+      # FEDORA_VERSION=43: solopasha/hyprland (fc43) richiede libdisplay-info.so.2.
+      # F43 ha 0.2.0 (.so.2); F44/F45 hanno 0.3.0 (.so.3) incompatibile.
       # IMAGE seleziona il caso in build.sh (zena | zena-nvidia).
       - name: "Build OCI (${{ matrix.variant }})"
         run: |
@@ -85,7 +85,7 @@ jobs:
 
           buildah bud \
             --layers \
-            --build-arg FEDORA_VERSION=45 \
+            --build-arg FEDORA_VERSION=43 \
             --build-arg IMAGE=${{ matrix.build_arg }} \
             --tag "${IMAGE}:latest" \
             --tag "${IMAGE}:${DATE}" \
