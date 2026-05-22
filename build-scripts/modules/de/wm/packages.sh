@@ -32,8 +32,7 @@ packages=(
 )
 dnf5 -y install "${packages[@]}" --exclude=matugen --exclude=noctalia-qs
 
-# Hyprland: installato dopo libdisplay-info.so.2 già presente (pre-installata
-# in dnf.sh con priorità COPR solopasha/hyprland = 1).
+# Hyprland: disponibile nei repo ufficiali Fedora 45+
 dnf5 -y install \
   hyprland \
   xdg-desktop-portal-hyprland \
