@@ -21,13 +21,6 @@ packages=(
   xdg-desktop-portal-gnome
   wl-clipboard
 
-  # Hyprland ecosystem (sostituisce niri)
-  hyprland
-  xdg-desktop-portal-hyprland
-  hypridle
-  hyprlock
-  hyprpaper
-
   # Display manager
   greetd
 
@@ -38,6 +31,16 @@ packages=(
   kitty
 )
 dnf5 -y install "${packages[@]}" --exclude=matugen --exclude=noctalia-qs
+
+# Hyprland: installato separatamente con --allowerasing perché aquamarine
+# (dipendenza dal COPR solopasha/hyprland) richiede libdisplay-info.so.2,
+# versione più nuova di quella presente nel container base Fedora 44.
+dnf5 -y install --allowerasing \
+  hyprland \
+  xdg-desktop-portal-hyprland \
+  hypridle \
+  hyprlock \
+  hyprpaper
 dnf5 -y install nautilus-python matugen --releasever=44 --disablerepo='*copr*'
 
 packages=(
