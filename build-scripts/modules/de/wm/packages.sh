@@ -40,7 +40,7 @@ dnf5 -y install \
   hypridle \
   hyprlock \
   hyprpaper
-dnf5 -y install nautilus-python matugen --releasever=44 --disablerepo='*copr*'
+dnf5 -y install nautilus-python matugen --releasever=$(rpm -E %fedora) --disablerepo='*copr*'
 
 packages=(
   gnome-keyring
