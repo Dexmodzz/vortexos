@@ -71,7 +71,7 @@ jobs:
 
       # ── 4. Cosign ────────────────────────────────────────────────
       - name: Installa cosign
-        uses: sigstore/cosign-installer@v4
+        uses: sigstore/cosign-installer@v3
 
       # ── 5. Build con buildah ──────────────────────────────────────
       # FEDORA_VERSION=44 → fedora-bootc:44 (versione stabile attuale).
