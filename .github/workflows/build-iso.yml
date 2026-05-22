@@ -1,0 +1,194 @@
+name: Build ISO Installabile
+
+# Trigger: manuale (con scelta della variante) oppure automatico
+# dopo che build.yml completa con successo su main.
+# Non viene triggerato ad ogni push perché la build ISO è lenta
+# (bootc-image-builder scarica l'intera immagine OCI + genera ISO).
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: "Variante da buildare"
+        required: true
+        default: "base"
+        type: choice
+        options:
+          - base
+          - nvidia
+          - both
+
+  # Si attiva automaticamente dopo che build.yml finisce su main
+  workflow_run:
+    workflows: ["Build & Push OCI Image"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  # ── Determina quali varianti buildare ────────────────────────────
+  matrix-setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - name: Determina varianti
+        id: set
+        run: |
+          # workflow_run: builda solo la base (nvidia è opzionale e lenta)
+          # workflow_dispatch: segue la scelta dell'utente
+          VARIANT="${{ github.event.inputs.variant }}"
+
+          if [ "${{ github.event_name }}" = "workflow_run" ]; then
+            # Avvia solo se il workflow upstream è andato a buon fine
+            if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+              echo "Build upstream fallita — skip ISO build"
+              echo 'matrix={"include":[]}' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            VARIANT="base"
+          fi
+
+          case "${VARIANT}" in
+            base)
+              echo 'matrix={"include":[{"variant":"base","image_suffix":"","config":"iso/vortexos.toml"}]}' >> "$GITHUB_OUTPUT"
+              ;;
+            nvidia)
+              echo 'matrix={"include":[{"variant":"nvidia","image_suffix":"-nvidia","config":"iso/vortexos-nvidia.toml"}]}' >> "$GITHUB_OUTPUT"
+              ;;
+            both)
+              echo 'matrix={"include":[{"variant":"base","image_suffix":"","config":"iso/vortexos.toml"},{"variant":"nvidia","image_suffix":"-nvidia","config":"iso/vortexos-nvidia.toml"}]}' >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+  build-iso:
+    needs: matrix-setup
+    if: fromJson(needs.matrix-setup.outputs.matrix).include[0] != null
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.matrix-setup.outputs.matrix) }}
+
+    permissions:
+      contents: write    # necessario per caricare la ISO nella GitHub Release
+      packages: read     # per pullare l'immagine OCI da ghcr.io
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Login su ghcr.io ───────────────────────────────────────
+      # bootc-image-builder deve pullare l'immagine OCI per costruire la ISO.
+      - name: Login su ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 3. Installa podman (necessario per bootc-image-builder) ───
+      - name: Installa podman
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y podman
+          podman --version
+
+      # ── 4. Build ISO con bootc-image-builder ─────────────────────
+      # bootc-image-builder è il tool ufficiale di osbuild per generare
+      # ISO installabili (Anaconda) da immagini OCI bootc.
+      # La ISO risultante:
+      #   - avvia Anaconda (installer Fedora)
+      #   - installa il sistema base minimo sul disco
+      #   - esegue il kickstart che fa `bootc switch` verso la nostra immagine
+      #   - al primo riavvio il sistema è vortexos completo
+      #
+      # Nota: --privileged è richiesto da bootc-image-builder per i loop devices
+      - name: "Build ISO (${{ matrix.variant }})"
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.event.repository.name }}"
+          SUFFIX="${{ matrix.image_suffix }}"
+          IMAGE="ghcr.io/${OWNER,,}/${REPO,,}${SUFFIX}:latest"
+          CONFIG="${{ matrix.config }}"
+
+          echo "Pulling immagine OCI: ${IMAGE}"
+          sudo podman pull "${IMAGE}"
+
+          mkdir -p output
+
+          echo "Building ISO da ${IMAGE} con config ${CONFIG} ..."
+          sudo podman run --rm \
+            --privileged \
+            --pull=newer \
+            --security-opt label=disable \
+            -v "$(pwd)/output:/output" \
+            -v "$(pwd)/${CONFIG}:/config.toml:ro" \
+            ghcr.io/osbuild/bootc-image-builder:latest \
+            --type anaconda-iso \
+            --config /config.toml \
+            --local \
+            "${IMAGE}"
+
+          echo "ISO generata:"
+          ls -lh output/bootiso/ 2>/dev/null || ls -lh output/
+
+      # ── 5. Rinomina ISO ───────────────────────────────────────────
+      - name: Rinomina ISO
+        id: iso
+        run: |
+          DATE="$(date -u +%Y-%m-%d)"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          SUFFIX="${{ matrix.image_suffix }}"
+          ISO_NAME="vortexos${SUFFIX}-${DATE}-${SHORT_SHA}.iso"
+
+          # bootc-image-builder mette la ISO in output/bootiso/ o output/
+          ISO_PATH="$(find output -name '*.iso' | head -n1)"
+          if [ -z "${ISO_PATH}" ]; then
+            echo "ERRORE: nessuna ISO trovata in output/"
+            ls -la output/
+            exit 1
+          fi
+
+          mv "${ISO_PATH}" "${ISO_NAME}"
+          echo "iso_name=${ISO_NAME}" >> "$GITHUB_OUTPUT"
+          echo "ISO pronta: ${ISO_NAME} ($(du -h ${ISO_NAME} | cut -f1))"
+
+      # ── 6. Crea o aggiorna GitHub Release e carica ISO ───────────
+      # La ISO viene caricata come asset di una GitHub Release.
+      # Se esiste già una release con quel tag la aggiorna,
+      # altrimenti ne crea una nuova.
+      - name: "Carica ISO su GitHub Release (${{ matrix.variant }})"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "iso-${{ github.run_number }}"
+          name: "vortexos ISO — ${{ github.run_number }} (${{ matrix.variant }})"
+          body: |
+            ## vortexos ISO — build ${{ github.run_number }}
+
+            **Variante:** `${{ matrix.variant }}`
+            **Immagine OCI:** `ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}${{ matrix.image_suffix }}:latest`
+            **Commit:** `${{ github.sha }}`
+
+            ### Come usare questa ISO
+
+            1. Scarica il file `.iso` qui sotto
+            2. Scrivila su una chiavetta USB:
+               ```bash
+               sudo dd if=vortexos*.iso of=/dev/sdX bs=4M status=progress && sync
+               ```
+               *(sostituisci `/dev/sdX` con la tua chiavetta — usa `lsblk` per identificarla)*
+            3. Avvia dal dispositivo USB
+            4. Anaconda installerà il sistema base e farà automaticamente `bootc switch` verso `ghcr.io/dexmodzz/vortexos${{ matrix.image_suffix }}:latest`
+            5. Dopo il riavvio hai vortexos completo. Aggiornamenti futuri:
+               ```bash
+               sudo bootc upgrade && sudo reboot
+               ```
+
+            ---
+            > ⚠️ La ISO usa Anaconda in modalità minima (solo Storage + Runtime attivi).
+            > Rete, utenti, timezone vengono configurati dal sistema dopo il primo avvio.
+          files: ${{ steps.iso.outputs.iso_name }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
