@@ -42,9 +42,11 @@ Containerfile
 
 # --- Build scripts modificati per Hyprland ---
 # Questi file divergono da upstream: non devono essere sovrascritti dal sync.
+# build.sh:    rimosso modulo sign (MOK key non configurata)
 # dnf.sh:      rimossi COPR niri e xwayland-satellite
 # packages.sh: rimosso niri dalle dipendenze first-boot
 # wm/packages.sh: aggiunti hyprland, waybar, wofi, dunst, kitty, greetd
+build-scripts/build.sh
 build-scripts/modules/base/dnf.sh
 build-scripts/modules/base/packages.sh
 build-scripts/modules/de/wm/packages.sh

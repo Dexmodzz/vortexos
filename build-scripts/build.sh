@@ -19,7 +19,6 @@ case "$IMAGE" in
       "integrations.homed"
       "integrations.nix"
       "integrations.virtualization"
-      "sign"
       "initramfs"
     )
     ;;
@@ -38,7 +37,6 @@ case "$IMAGE" in
       "integrations.nix"
       "integrations.virtualization"
       "integrations.nvidia"
-      "sign"
       "initramfs"
     )
     ;;
