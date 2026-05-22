@@ -19,20 +19,21 @@ flatpak remote-add --if-not-exists --system flathub /etc/flatpak/remotes.d/flath
 flatpak remote-modify --system --enable flathub
 
 sed -i -f - /usr/lib/os-release <<EOF
-s|^NAME=.*|NAME=\"Zena\"|
-s|^ID=.*|ID=\"zena\"|
+s|^NAME=.*|NAME=\"vortexos\"|
 s|^VERSION=.*|VERSION=\"${RELEASE}.${DATE}\"|
-s|^PRETTY_NAME=.*|PRETTY_NAME=\"Zena ${RELEASE}.${DATE}\"|
+s|^PRETTY_NAME=.*|PRETTY_NAME=\"vortexos ${RELEASE}.${DATE}\"|
 s|^LOGO=.*|LOGO=\"cachyos\"|
-s|^HOME_URL=.*|HOME_URL=\"https://github.com/Zena-Linux/Zena\"|
-s|^BUG_REPORT_URL=.*|BUG_REPORT_URL=\"https://github.com/Zena-Linux/Zena/issues\"|
-s|^SUPPORT_URL=.*|SUPPORT_URL=\"https://github.com/Zena-Linux/Zena/issues\"|
-s|^CPE_NAME=\".*\"|CPE_NAME=\"cpe:/o:zena-linux:zena\"|
-s|^DOCUMENTATION_URL=.*|DOCUMENTATION_URL=\"https://github.com/Zena-Linux/Zena\"|
-s|^DEFAULT_HOSTNAME=.*|DEFAULT_HOSTNAME="zena"|
+s|^HOME_URL=.*|HOME_URL=\"https://github.com/Dexmodzz/vortexos\"|
+s|^BUG_REPORT_URL=.*|BUG_REPORT_URL=\"https://github.com/Dexmodzz/vortexos/issues\"|
+s|^SUPPORT_URL=.*|SUPPORT_URL=\"https://github.com/Dexmodzz/vortexos/issues\"|
+s|^CPE_NAME=\".*\"|CPE_NAME=\"cpe:/o:vortexos:vortexos\"|
+s|^DOCUMENTATION_URL=.*|DOCUMENTATION_URL=\"https://github.com/Dexmodzz/vortexos\"|
+s|^DEFAULT_HOSTNAME=.*|DEFAULT_HOSTNAME="vortexos"|
 
 /^REDHAT_BUGZILLA_PRODUCT=/d
 /^REDHAT_BUGZILLA_PRODUCT_VERSION=/d
 /^REDHAT_SUPPORT_PRODUCT=/d
 /^REDHAT_SUPPORT_PRODUCT_VERSION=/d
 EOF
+# ID=fedora viene mantenuto: bootc-image-builder usa ID per identificare
+# il distro (cerca "fedora-43"); cambiarlo in "zena" causerebbe build fallite.
