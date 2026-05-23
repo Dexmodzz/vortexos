@@ -165,10 +165,15 @@ jobs:
           ISO_NAME="vortexos${SUFFIX}-${DATE}-${SHA}.iso"
           sudo mv "${ISO_SRC}" "${ISO_NAME}"
 
-          SIZE="$(sudo du -h "${ISO_NAME}" | cut -f1)"
-          echo "iso_name=${ISO_NAME}" >> "$GITHUB_OUTPUT"
-          echo "iso_size=${SIZE}"     >> "$GITHUB_OUTPUT"
-          echo "ISO pronta: ${ISO_NAME} (${SIZE})"
+          # Comprimi con zstd: le ISO superano spesso il limite 2GB di GitHub Releases
+          sudo zstd -T0 -9 "${ISO_NAME}" -o "${ISO_NAME}.zst"
+          sudo rm "${ISO_NAME}"
+
+          SIZE="$(sudo du -h "${ISO_NAME}.zst" | cut -f1)"
+          echo "iso_name=${ISO_NAME}.zst" >> "$GITHUB_OUTPUT"
+          echo "iso_name_base=${ISO_NAME}" >> "$GITHUB_OUTPUT"
+          echo "iso_size=${SIZE}"          >> "$GITHUB_OUTPUT"
+          echo "ISO compressa: ${ISO_NAME}.zst (${SIZE})"
 
       # ── 7. Carica su GitHub Release ──────────────────────────────
       - name: "Pubblica ISO su GitHub Release (${{ matrix.variant }})"
@@ -187,13 +192,14 @@ jobs:
             | Variante | `${{ matrix.variant }}` |
             | Immagine OCI | `ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}${{ matrix.suffix }}:latest` |
             | Commit | `${{ github.sha }}` |
-            | Dimensione | ${{ steps.iso.outputs.iso_size }} |
+            | Dimensione compressa | ${{ steps.iso.outputs.iso_size }} |
 
             ### Come usare questa ISO
 
-            **1. Scrivi su chiavetta USB:**
+            **1. Decomprimi e scrivi su chiavetta USB:**
             ```bash
-            sudo dd if=${{ steps.iso.outputs.iso_name }} of=/dev/sdX bs=4M status=progress && sync
+            zstd -d ${{ steps.iso.outputs.iso_name }}
+            sudo dd if=${{ steps.iso.outputs.iso_name_base }} of=/dev/sdX bs=4M status=progress && sync
             ```
             *(usa `lsblk` per identificare la tua chiavetta — sostituisci `/dev/sdX`)*
 
