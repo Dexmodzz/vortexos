@@ -165,25 +165,31 @@ jobs:
           ISO_NAME="vortexos${SUFFIX}-${DATE}-${SHA}.iso"
           sudo mv "${ISO_SRC}" "${ISO_NAME}"
 
-          # Comprimi con zstd: le ISO superano spesso il limite 2GB di GitHub Releases
-          sudo zstd -T0 -9 "${ISO_NAME}" -o "${ISO_NAME}.zst"
-          sudo rm "${ISO_NAME}"
+          SIZE="$(sudo du -h "${ISO_NAME}" | cut -f1)"
+          echo "iso_name=${ISO_NAME}" >> "$GITHUB_OUTPUT"
+          echo "iso_size=${SIZE}"     >> "$GITHUB_OUTPUT"
+          echo "ISO pronta: ${ISO_NAME} (${SIZE})"
 
-          SIZE="$(sudo du -h "${ISO_NAME}.zst" | cut -f1)"
-          echo "iso_name=${ISO_NAME}.zst" >> "$GITHUB_OUTPUT"
-          echo "iso_name_base=${ISO_NAME}" >> "$GITHUB_OUTPUT"
-          echo "iso_size=${SIZE}"          >> "$GITHUB_OUTPUT"
-          echo "ISO compressa: ${ISO_NAME}.zst (${SIZE})"
+      # ── 7. Upload su Cloudflare R2 ────────────────────────────────
+      - name: "Upload ISO su Cloudflare R2 (${{ matrix.variant }})"
+        run: |
+          ISO_NAME="${{ steps.iso.outputs.iso_name }}"
+          aws s3 cp "${ISO_NAME}" "s3://vortexos-iso/${ISO_NAME}" \
+            --endpoint-url "https://ba1fc8651882905335e936ebc1e1de1b.r2.cloudflarestorage.com"
+          echo "Caricata: https://pub-c682aec9903d4edc8320665c65d6cea0.r2.dev/${ISO_NAME}"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
 
-      # ── 7. Carica su GitHub Release ──────────────────────────────
-      - name: "Pubblica ISO su GitHub Release (${{ matrix.variant }})"
+      # ── 8. GitHub Release con link R2 ────────────────────────────
+      - name: "Pubblica Release con link download (${{ matrix.variant }})"
         uses: softprops/action-gh-release@v3
         with:
           tag_name: "iso-${{ github.run_number }}"
           name: "vortexos ISO — build ${{ github.run_number }}"
           draft: false
           prerelease: false
-          files: ${{ steps.iso.outputs.iso_name }}
           body: |
             ## vortexos ISO — build ${{ github.run_number }}
 
@@ -192,14 +198,17 @@ jobs:
             | Variante | `${{ matrix.variant }}` |
             | Immagine OCI | `ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}${{ matrix.suffix }}:latest` |
             | Commit | `${{ github.sha }}` |
-            | Dimensione compressa | ${{ steps.iso.outputs.iso_size }} |
+            | Dimensione | ${{ steps.iso.outputs.iso_size }} |
+
+            ### ⬇️ Download ISO
+
+            **[${{ steps.iso.outputs.iso_name }}](https://pub-c682aec9903d4edc8320665c65d6cea0.r2.dev/${{ steps.iso.outputs.iso_name }})**
 
             ### Come usare questa ISO
 
-            **1. Decomprimi e scrivi su chiavetta USB:**
+            **1. Scrivi su chiavetta USB:**
             ```bash
-            zstd -d ${{ steps.iso.outputs.iso_name }}
-            sudo dd if=${{ steps.iso.outputs.iso_name_base }} of=/dev/sdX bs=4M status=progress && sync
+            sudo dd if=${{ steps.iso.outputs.iso_name }} of=/dev/sdX bs=4M status=progress && sync
             ```
             *(usa `lsblk` per identificare la tua chiavetta — sostituisci `/dev/sdX`)*
 
