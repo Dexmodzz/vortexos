@@ -25,4 +25,7 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
 # sovrascritti dal sync upstream automatico.
 COPY system-files/custom /
 
+RUN chmod +x /usr/libexec/vortexos-flatpak-install.sh && \
+    systemctl enable vortexos-flatpak.service
+
 RUN bootc container lint

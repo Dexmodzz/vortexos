@@ -42,16 +42,20 @@ Containerfile
 
 # --- Build scripts modificati per Hyprland ---
 # Questi file divergono da upstream: non devono essere sovrascritti dal sync.
-# build.sh:    rimosso modulo sign (MOK key non configurata)
-# dnf.sh:      rimossi COPR niri e xwayland-satellite; aggiunto solopasha/hyprland
-# packages.sh: rimosso niri dalle dipendenze first-boot
-# wm/packages.sh: aggiunti hyprland, waybar, wofi, dunst, kitty, greetd
-# system.sh:   ID rimasto fedora (necessario per bootc-image-builder); branding → vortexos
+# build.sh:        rimosso modulo sign (MOK key non configurata)
+# dnf.sh:          rimossi COPR niri e xwayland-satellite; aggiunto solopasha/hyprland
+# packages.sh:     rimosso niri dalle dipendenze first-boot
+# wm/packages.sh:  aggiunti hyprland, waybar, wofi, dunst, kitty, greetd
+# system.sh:       ID rimasto fedora (necessario per bootc-image-builder); branding → vortexos
+# base/services.sh: lista servizi di sistema — cambi upstream potrebbero disabilitare greetd
+# wm/services.sh:  abilita greetd.service — critico per il boot di vortexos
 build-scripts/build.sh
 build-scripts/modules/base/dnf.sh
 build-scripts/modules/base/packages.sh
 build-scripts/modules/de/wm/packages.sh
 build-scripts/modules/base/system.sh
+build-scripts/modules/base/services.sh
+build-scripts/modules/de/wm/services.sh
 
 # --- ISO blueprint personalizzati ---
 iso/vortexos.toml

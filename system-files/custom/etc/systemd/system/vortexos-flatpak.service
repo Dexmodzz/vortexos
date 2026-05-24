@@ -1,0 +1,13 @@
+[Unit]
+Description=VortexOS Flatpak apps install
+After=network-online.target flatpak-system-helper.service
+Wants=network-online.target
+ConditionPathExists=!/var/lib/flatpak/app/com.system76.CosmicStore
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/vortexos-flatpak-install.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
