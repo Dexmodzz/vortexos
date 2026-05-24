@@ -1,27 +1,6 @@
-# ============================================================
-# greetd/config.toml — display manager vortexos
-# Posizione nel sistema: /etc/greetd/config.toml
-# Sostituisce system-files/wm/etc/greetd/config.toml (niri)
-# ============================================================
-
 [terminal]
 vt = 1
 
 [default_session]
-# TODO: scegli il greeter per Hyprland.
-#
-# OPZIONE A — dms-greeter con Hyprland (da verificare):
-#   dms-greeter è progettato per niri; supporto Hyprland non confermato.
-#   Se funziona, usa:
-#     command = "/bin/sh -c 'RUST_LOG=error dms-greeter --command Hyprland > /dev/null 2>&1'"
-#   Riferimento: https://github.com/danklinux/dms
-#
-# OPZIONE B — tuigreet (TUI, richiede: dnf install tuigreet):
-#     command = "tuigreet --time --remember --asterisks --cmd Hyprland"
-#
-# OPZIONE C — agreety (incluso in greetd, nessun pacchetto extra):
-#     command = "agreety --cmd Hyprland"
-#
-# Per ora usiamo agreety come fallback sicuro; cambia con A o B dopo verifica.
-command = "agreety --cmd Hyprland"
+command = "/bin/sh -c 'RUST_LOG=error dms-greeter --command Hyprland > /dev/null 2>&1'"
 user = "greeter"

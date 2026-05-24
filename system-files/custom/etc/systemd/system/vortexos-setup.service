@@ -1,0 +1,14 @@
+[Unit]
+Description=VortexOS Setup
+ConditionPathExists=!/var/lib/zena-setup.done
+Before=display-manager.service greetd.service
+After=basic.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/run-vortexos-setup.sh
+RemainAfterExit=yes
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=basic.target
