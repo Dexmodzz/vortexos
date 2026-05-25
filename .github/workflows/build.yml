@@ -101,7 +101,7 @@ jobs:
             suffix: "-nvidia"
 
     permissions:
-      contents: read
+      contents: write
       packages: read
 
     steps:
@@ -168,10 +168,33 @@ jobs:
           sudo cp "${ISO_SRC}" "${ISO_NAME}"
           sudo chmod 644 "${ISO_NAME}"
           rclone copyto "${ISO_NAME}" "r2:${BUCKET}/${ISO_NAME}" --progress
-          echo "ISO: ${{ secrets.CF_R2_ENDPOINT }}/${ISO_NAME}"
+          echo "ISO_NAME=${ISO_NAME}" >> "$GITHUB_ENV"
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
           RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.CF_R2_ENDPOINT }}
+
+      - name: Crea GitHub Release (${{ matrix.variant }})
+        run: |
+          DATE="$(date -u +%Y-%m-%d)"
+          SHA="${GITHUB_SHA::7}"
+          TAG="v${DATE}-${SHA}${{ matrix.suffix }}"
+          PUBLIC_URL="${{ secrets.CF_R2_PUBLIC_URL }}/${ISO_NAME}"
+          gh release create "${TAG}" \
+            --title "VortexOS${{ matrix.suffix }} ${DATE} (${SHA})" \
+            --notes "## Download
+
+**ISO:** [${ISO_NAME}](${PUBLIC_URL})
+
+Immagine OCI: \`ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}${{ matrix.suffix }}:${SHA}\`" \
+            --latest 2>/dev/null || \
+          gh release edit "${TAG}" \
+            --notes "## Download
+
+**ISO:** [${ISO_NAME}](${PUBLIC_URL})
+
+Immagine OCI: \`ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}${{ matrix.suffix }}:${SHA}\`"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
