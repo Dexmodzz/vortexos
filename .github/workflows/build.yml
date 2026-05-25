@@ -58,7 +58,8 @@ jobs:
           DATE="${{ steps.tags.outputs.date }}"
           SHA="${{ steps.tags.outputs.sha }}"
           buildah bud \
-            --layers \
+            --no-cache \
+            --pull-always \
             --target "${{ matrix.target }}" \
             --tag "${IMAGE}:latest" \
             --tag "${IMAGE}:${DATE}" \
