@@ -150,13 +150,24 @@ jobs:
 
       - name: Upload ISO su Cloudflare R2 (${{ matrix.variant }})
         run: |
+          set -euo pipefail
+          BUCKET="${{ secrets.CF_R2_BUCKET }}"
+          if [[ -z "${BUCKET}" ]]; then
+            echo "Error: secret CF_R2_BUCKET non impostato"
+            exit 1
+          fi
           DATE="$(date -u +%Y-%m-%d)"
           SHA="${GITHUB_SHA::7}"
-          ISO_SRC=$(find output -name '*.iso' | head -1)
+          ISO_SRC=$(find output -name '*.iso' -print -quit)
+          if [[ -z "${ISO_SRC}" ]]; then
+            echo "Error: nessuna ISO trovata in output/"
+            find output -ls || true
+            exit 1
+          fi
           ISO_NAME="vortexos${{ matrix.suffix }}-${DATE}-${SHA}.iso"
-          sudo mv "${ISO_SRC}" "${ISO_NAME}"
-          rclone copyto "${ISO_NAME}" "r2:${{ secrets.CF_R2_BUCKET }}/${ISO_NAME}" \
-            --progress
+          sudo cp "${ISO_SRC}" "${ISO_NAME}"
+          sudo chmod 644 "${ISO_NAME}"
+          rclone copyto "${ISO_NAME}" "r2:${BUCKET}/${ISO_NAME}" --progress
           echo "ISO: ${{ secrets.CF_R2_ENDPOINT }}/${ISO_NAME}"
         env:
           RCLONE_CONFIG_R2_TYPE: s3
