@@ -1,20 +1,22 @@
 # ================================================================
 # VortexOS Containerfile
-# Base image : quay.io/fedora/fedora-bootc:45
+# Base image : quay.io/fedora/fedora-bootc:43
 # Target base  : --target vortexos
 # Target nvidia: --target vortexos-nvidia
+#
+# Nota: fc43 richiesto per compatibilità solopasha/hyprland (fc44/fc45
+# usa libdisplay-info.so.3 incompatibile con i build del COPR).
 # ================================================================
 
-FROM quay.io/fedora/fedora-bootc:45 AS vortexos
+FROM quay.io/fedora/fedora-bootc:43 AS vortexos
 
-# Plugin COPR (non incluso di default in fedora-bootc) + abilitazione COPR
+# Plugin COPR + abilitazione COPR
 RUN dnf5 install -y 'dnf5-command(copr)' \
  && dnf5 copr enable -y bieszczaders/kernel-cachyos \
- && dnf5 copr enable -y avengemedia/dms
+ && dnf5 copr enable -y avengemedia/dms \
+ && dnf5 copr enable -y solopasha/hyprland
 
-# CachyOS kernel — pacchetti esistenti nel COPR: kernel-cachyos, -core, -modules
-# (kernel-cachyos-modules-core e -extra non esistono nel COPR)
-# dracut rigenera l'initramfs; richiede buildah --privileged in CI
+# CachyOS kernel — download + install senza scriptlet, poi depmod e dracut
 RUN mkdir -p /tmp/kernel-rpms \
  && dnf5 download \
       --arch x86_64 \
@@ -93,12 +95,12 @@ RUN bootc container lint
 
 FROM vortexos AS vortexos-nvidia
 
-# RPMFusion
+# RPMFusion per Fedora 43
 RUN dnf5 install -y \
-      https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-45.noarch.rpm \
-      https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-45.noarch.rpm
+      https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-43.noarch.rpm \
+      https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-43.noarch.rpm
 
-# Driver Nvidia (akmod-595 default RPMFusion F45) + CUDA + headers per akmods
+# Driver Nvidia + CUDA + headers per akmods
 RUN dnf5 install -y \
       akmod-nvidia \
       xorg-x11-drv-nvidia-cuda \
