@@ -7,8 +7,9 @@
 
 FROM quay.io/fedora/fedora-bootc:45 AS vortexos
 
-# COPRs
-RUN dnf5 copr enable -y bieszczaders/kernel-cachyos \
+# Plugin COPR (non incluso di default in fedora-bootc) + abilitazione COPR
+RUN dnf5 install -y 'dnf5-command(copr)' \
+ && dnf5 copr enable -y bieszczaders/kernel-cachyos \
  && dnf5 copr enable -y avengemedia/dms
 
 # CachyOS kernel — sostituisce il kernel stock Fedora
