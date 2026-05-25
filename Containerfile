@@ -15,9 +15,8 @@ RUN dnf5 install -y 'dnf5-command(copr)' \
 # CachyOS kernel — pacchetti esistenti nel COPR: kernel-cachyos, -core, -modules
 # (kernel-cachyos-modules-core e -extra non esistono nel COPR)
 # dracut rigenera l'initramfs; richiede buildah --privileged in CI
-RUN dnf5 install -y \
-      --setopt=install_weak_deps=False \
-      --downloadonly \
+RUN mkdir -p /tmp/kernel-rpms \
+ && dnf5 download \
       --destdir=/tmp/kernel-rpms \
       kernel-cachyos \
       kernel-cachyos-core \
