@@ -12,8 +12,17 @@ RUN dnf5 install -y 'dnf5-command(copr)' \
  && dnf5 copr enable -y bieszczaders/kernel-cachyos \
  && dnf5 copr enable -y avengemedia/dms
 
-# CachyOS kernel — sostituisce il kernel stock Fedora
-RUN dnf5 install -y --allowerasing kernel-cachyos
+# CachyOS kernel — override via rpm-ostree (metodo ufficiale bootc per kernel custom)
+# rpm-ostree override replace gestisce dracut correttamente dentro un container OCI
+RUN rpm-ostree cliwrap install-to-root / \
+ && rpm-ostree override replace \
+      --experimental \
+      --from repo=copr:copr.fedorainfracloud.org:bieszczaders:kernel-cachyos \
+      kernel \
+      kernel-core \
+      kernel-modules \
+      kernel-modules-core \
+      kernel-modules-extra
 
 # Stack desktop
 RUN dnf5 install -y \
