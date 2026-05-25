@@ -17,10 +17,12 @@ RUN dnf5 install -y 'dnf5-command(copr)' \
 # dracut rigenera l'initramfs; richiede buildah --privileged in CI
 RUN dnf5 install -y \
       --setopt=install_weak_deps=False \
-      --setopt=tsflags=noscripts \
+      --downloadonly \
+      --destdir=/tmp/kernel-rpms \
       kernel-cachyos \
       kernel-cachyos-core \
       kernel-cachyos-modules \
+ && rpm -ivh --noscripts --nodeps /tmp/kernel-rpms/kernel-cachyos*.rpm \
  && KVER=$(rpm -q kernel-cachyos-core --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}' | tail -1) \
  && echo "Kernel version: ${KVER}" \
  && depmod -a "${KVER}" \
@@ -28,7 +30,8 @@ RUN dnf5 install -y \
            --kver "${KVER}" \
            --reproducible \
            --add ostree \
-           -f "/boot/initramfs-${KVER}.img"
+           -f "/boot/initramfs-${KVER}.img" \
+ && rm -rf /tmp/kernel-rpms
 
 # Stack desktop
 RUN dnf5 install -y \
