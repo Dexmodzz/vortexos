@@ -12,17 +12,24 @@ RUN dnf5 install -y 'dnf5-command(copr)' \
  && dnf5 copr enable -y bieszczaders/kernel-cachyos \
  && dnf5 copr enable -y avengemedia/dms
 
-# CachyOS kernel — override via rpm-ostree (metodo ufficiale bootc per kernel custom)
-# rpm-ostree override replace gestisce dracut correttamente dentro un container OCI
-RUN rpm-ostree cliwrap install-to-root / \
- && rpm-ostree override replace \
-      --experimental \
-      --from repo=copr:copr.fedorainfracloud.org:bieszczaders:kernel-cachyos \
-      kernel \
-      kernel-core \
-      kernel-modules \
-      kernel-modules-core \
-      kernel-modules-extra
+# CachyOS kernel — i pacchetti hanno nomi custom (kernel-cachyos-*),
+# rpm-ostree override replace non funziona con nomi diversi da kernel base.
+# Si installano direttamente e si rigenera l'initramfs manualmente.
+RUN mkdir -p /dev && mknod /dev/log c 1 9 || true
+RUN dnf5 install -y \
+      --setopt=install_weak_deps=False \
+      --skip-broken \
+      kernel-cachyos \
+      kernel-cachyos-core \
+      kernel-cachyos-modules \
+      kernel-cachyos-modules-core \
+      kernel-cachyos-modules-extra \
+    || true \
+ && KVER=$(rpm -q kernel-cachyos-core --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}' | tail -1) \
+ && depmod -a "${KVER}" \
+ && dracut --no-hostonly --kver "${KVER}" --reproducible \
+           --add ostree \
+           -f "/boot/initramfs-${KVER}.img"
 
 # Stack desktop
 RUN dnf5 install -y \
