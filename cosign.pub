@@ -1,4 +1,5 @@
------BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEuguqO6rQaa0zX9BbhpItIP8dt0Yo
-bGn6oLSprar/eItEoVCO6AicL+dPRUS4Rqp/KhM9ul+zuNnYGNDD0AVPyA==
------END PUBLIC KEY-----
+# Chiave pubblica cosign per verificare le immagini VortexOS.
+# Genera con: cosign generate-key-pair
+# Poi sostituisci questo file con il contenuto di cosign.pub generato.
+#
+# Verifica: cosign verify --key cosign.pub ghcr.io/<owner>/vortexos:latest

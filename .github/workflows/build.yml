@@ -1,132 +1,164 @@
-name: Build & Push OCI Image
+name: Build & Push
 
 on:
   push:
-    branches: ["main"]
-  pull_request:
-    types: [closed]
-    branches: ["main"]
+    branches: [main]
   workflow_dispatch:
+  workflow_call:
 
 jobs:
-  build:
-    if: >
-      github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
-
+  # ── Build OCI + Push + Sign ───────────────────────────────────
+  build-oci:
     runs-on: ubuntu-latest
-
-    # Matrix: base (senza NVIDIA) e nvidia.
-    # fail-fast: false → se nvidia fallisce (akmods lento/problematico)
-    # la variante base viene comunque pushata.
     strategy:
       fail-fast: false
       matrix:
         include:
           - variant: base
-            image_suffix: ""         # → ghcr.io/dexmodzz/vortexos
-            build_arg: zena          # caso in build.sh
+            target: vortexos
+            suffix: ""
           - variant: nvidia
-            image_suffix: "-nvidia"  # → ghcr.io/dexmodzz/vortexos-nvidia
-            build_arg: zena-nvidia
+            target: vortexos-nvidia
+            suffix: "-nvidia"
 
     permissions:
       contents: read
       packages: write
-      id-token: write  # cosign keyless OIDC
+      id-token: write
 
     steps:
-      # ── 1. Checkout ──────────────────────────────────────────────
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
-      # ── 2. Calcola nome immagine e tag ────────────────────────────
-      # Tre tag: latest, YYYY-MM-DD, SHA corto (7 char).
-      # Vengono salvati come stringhe semplici (senza il prefisso registry)
-      # e poi combinati con IMAGE_BASE nei passi successivi.
       - name: Calcola tag immagine
         id: tags
         run: |
           OWNER="${{ github.repository_owner }}"
           REPO="${{ github.event.repository.name }}"
-          SUFFIX="${{ matrix.image_suffix }}"
-
-          # ghcr.io richiede tutto minuscolo
-          IMAGE_BASE="ghcr.io/${OWNER,,}/${REPO,,}${SUFFIX}"
+          IMAGE_BASE="ghcr.io/${OWNER,,}/${REPO,,}${{ matrix.suffix }}"
           DATE="$(date -u +%Y-%m-%d)"
-          SHORT_SHA="${GITHUB_SHA::7}"
-
+          SHA="${GITHUB_SHA::7}"
           echo "image_base=${IMAGE_BASE}" >> "$GITHUB_OUTPUT"
           echo "date=${DATE}"             >> "$GITHUB_OUTPUT"
-          echo "short_sha=${SHORT_SHA}"   >> "$GITHUB_OUTPUT"
+          echo "sha=${SHA}"               >> "$GITHUB_OUTPUT"
 
-      # ── 3. Login ghcr.io ─────────────────────────────────────────
-      - name: Login su ghcr.io
-        uses: docker/login-action@v4
+      - name: Login ghcr.io
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ── 4. Cosign ────────────────────────────────────────────────
       - name: Installa cosign
         uses: sigstore/cosign-installer@v3
 
-      # ── 5. Build con buildah ──────────────────────────────────────
-      # FEDORA_VERSION=43: solopasha/hyprland (fc43) richiede libdisplay-info.so.2.
-      # F43 ha 0.2.0 (.so.2); F44/F45 hanno 0.3.0 (.so.3) incompatibile.
-      # IMAGE seleziona il caso in build.sh (zena | zena-nvidia).
-      - name: "Build OCI (${{ matrix.variant }})"
+      - name: Build OCI (${{ matrix.variant }})
         run: |
           IMAGE="${{ steps.tags.outputs.image_base }}"
           DATE="${{ steps.tags.outputs.date }}"
-          SHA="${{ steps.tags.outputs.short_sha }}"
-
+          SHA="${{ steps.tags.outputs.sha }}"
           buildah bud \
             --layers \
-            --build-arg FEDORA_VERSION=43 \
-            --build-arg IMAGE=${{ matrix.build_arg }} \
+            --target "${{ matrix.target }}" \
             --tag "${IMAGE}:latest" \
             --tag "${IMAGE}:${DATE}" \
             --tag "${IMAGE}:${SHA}" \
             .
 
-      # ── 6. Push ───────────────────────────────────────────────────
-      - name: "Push su ghcr.io (${{ matrix.variant }})"
+      - name: Push su ghcr.io (${{ matrix.variant }})
         id: push
         run: |
           IMAGE="${{ steps.tags.outputs.image_base }}"
           DATE="${{ steps.tags.outputs.date }}"
-          SHA="${{ steps.tags.outputs.short_sha }}"
-
-          for TAG in "latest" "${DATE}" "${SHA}"; do
+          SHA="${{ steps.tags.outputs.sha }}"
+          for TAG in latest "${DATE}" "${SHA}"; do
             buildah push \
               --digestfile "/tmp/digest-${TAG}.txt" \
               "${IMAGE}:${TAG}" \
               "docker://${IMAGE}:${TAG}"
           done
-
-          # Digest del tag latest usato per la firma cosign
           echo "digest=$(cat /tmp/digest-latest.txt)" >> "$GITHUB_OUTPUT"
 
-      # ── 7. Firma keyless ─────────────────────────────────────────
-      # Identità verificabile via: cosign verify ghcr.io/dexmodzz/vortexos:latest
-      - name: "Firma con cosign (${{ matrix.variant }})"
+      - name: Firma cosign keyless (${{ matrix.variant }})
         run: |
           cosign sign --yes \
             "${{ steps.tags.outputs.image_base }}@${{ steps.push.outputs.digest }}"
         env:
           COSIGN_EXPERIMENTAL: "true"
 
-      # ── 8. Riepilogo ─────────────────────────────────────────────
-      - name: "Riepilogo (${{ matrix.variant }})"
+  # ── Build ISO + Upload R2 ─────────────────────────────────────
+  build-iso:
+    needs: build-oci
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: base
+            suffix: ""
+          - variant: nvidia
+            suffix: "-nvidia"
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Installa podman + awscli
         run: |
-          IMAGE="${{ steps.tags.outputs.image_base }}"
-          echo ""
-          echo "═══════════════════════════════════════════════"
-          echo "  ✓ ${IMAGE}:latest pushata"
-          echo "  Primo switch:  sudo bootc switch ${IMAGE}:latest"
-          echo "  Aggiornamenti: sudo bootc upgrade && sudo reboot"
-          echo "  Rollback:      sudo bootc rollback && sudo reboot"
-          echo "═══════════════════════════════════════════════"
+          sudo apt-get update -qq
+          sudo apt-get install -y podman awscli
+
+      - name: Login ghcr.io (root)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io \
+            --username "${{ github.actor }}" \
+            --password-stdin
+
+      - name: Pull immagine OCI (${{ matrix.variant }})
+        run: |
+          OWNER="${{ github.repository_owner }}"
+          REPO="${{ github.event.repository.name }}"
+          IMAGE="ghcr.io/${OWNER,,}/${REPO,,}${{ matrix.suffix }}:latest"
+          sudo podman pull "${IMAGE}"
+
+          # bootc-image-builder richiede ID=fedora per rilevare la distro
+          LOCAL="${IMAGE}-bib"
+          CTR=$(sudo podman create "${IMAGE}" /bin/true)
+          sudo podman cp "${CTR}:/usr/lib/os-release" /tmp/os-release
+          sudo sed -i 's/^ID=.*/ID=fedora/' /tmp/os-release
+          sudo podman cp /tmp/os-release "${CTR}:/usr/lib/os-release"
+          sudo podman commit "${CTR}" "${LOCAL}"
+          sudo podman rm "${CTR}"
+
+          echo "LOCAL_IMAGE=${LOCAL}" >> "$GITHUB_ENV"
+
+      - name: Build ISO (${{ matrix.variant }})
+        run: |
+          mkdir -p output
+          sudo podman run --rm \
+            --privileged \
+            --security-opt label=disable \
+            -v "$(pwd)/output:/output" \
+            -v /var/lib/containers/storage:/var/lib/containers/storage \
+            ghcr.io/osbuild/bootc-image-builder:latest \
+            --type anaconda-iso \
+            --rootfs xfs \
+            --local \
+            "${LOCAL_IMAGE}"
+
+      - name: Upload ISO su Cloudflare R2 (${{ matrix.variant }})
+        run: |
+          DATE="$(date -u +%Y-%m-%d)"
+          SHA="${GITHUB_SHA::7}"
+          ISO_SRC=$(find output -name '*.iso' | head -1)
+          ISO_NAME="vortexos${{ matrix.suffix }}-${DATE}-${SHA}.iso"
+          sudo mv "${ISO_SRC}" "${ISO_NAME}"
+          aws s3 cp "${ISO_NAME}" \
+            "s3://${{ secrets.CF_R2_BUCKET }}/${ISO_NAME}" \
+            --endpoint-url "${{ secrets.CF_R2_ENDPOINT }}"
+          echo "ISO: ${{ secrets.CF_R2_ENDPOINT }}/${ISO_NAME}"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto

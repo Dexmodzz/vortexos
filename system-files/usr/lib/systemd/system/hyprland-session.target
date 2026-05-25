@@ -1,0 +1,7 @@
+[Unit]
+Description=Hyprland Desktop Session
+Documentation=man:systemd.special(7)
+BindsTo=graphical-session.target
+Wants=xdg-desktop-autostart.target
+After=graphical-session-pre.target
+Before=graphical-session.target xdg-desktop-autostart.target
