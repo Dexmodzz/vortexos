@@ -105,17 +105,10 @@ jobs:
       packages: read
 
     steps:
-      - name: Installa podman
+      - name: Installa podman e rclone
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y podman
-
-      - name: Installa AWS CLI v2
-        run: |
-          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
-          unzip -q /tmp/awscliv2.zip -d /tmp
-          sudo /tmp/aws/install
-          aws --version
+          sudo apt-get install -y podman rclone
 
       - name: Login ghcr.io (root)
         run: |
@@ -162,11 +155,12 @@ jobs:
           ISO_SRC=$(find output -name '*.iso' | head -1)
           ISO_NAME="vortexos${{ matrix.suffix }}-${DATE}-${SHA}.iso"
           sudo mv "${ISO_SRC}" "${ISO_NAME}"
-          aws s3 cp "${ISO_NAME}" \
-            "s3://${{ secrets.CF_R2_BUCKET }}/${ISO_NAME}" \
-            --endpoint-url "${{ secrets.CF_R2_ENDPOINT }}"
+          rclone copyto "${ISO_NAME}" "r2:${{ secrets.CF_R2_BUCKET }}/${ISO_NAME}" \
+            --progress
           echo "ISO: ${{ secrets.CF_R2_ENDPOINT }}/${ISO_NAME}"
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ secrets.CF_R2_ENDPOINT }}
