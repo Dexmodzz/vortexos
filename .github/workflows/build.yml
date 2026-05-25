@@ -182,19 +182,13 @@ jobs:
           SHA="${GITHUB_SHA::7}"
           TAG="v${DATE}-${SHA}${{ matrix.suffix }}"
           PUBLIC_URL="${{ secrets.CF_R2_PUBLIC_URL }}/${ISO_NAME}"
+          printf '## Download\n\n**ISO:** [%s](%s)\n\nImmagine OCI: `ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}${{ matrix.suffix }}:%s`\n' \
+            "${ISO_NAME}" "${PUBLIC_URL}" "${SHA}" > /tmp/release-notes.md
           gh release create "${TAG}" \
             --title "VortexOS${{ matrix.suffix }} ${DATE} (${SHA})" \
-            --notes "## Download
-
-**ISO:** [${ISO_NAME}](${PUBLIC_URL})
-
-Immagine OCI: \`ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}${{ matrix.suffix }}:${SHA}\`" \
+            --notes-file /tmp/release-notes.md \
             --latest 2>/dev/null || \
           gh release edit "${TAG}" \
-            --notes "## Download
-
-**ISO:** [${ISO_NAME}](${PUBLIC_URL})
-
-Immagine OCI: \`ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}${{ matrix.suffix }}:${SHA}\`"
+            --notes-file /tmp/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
