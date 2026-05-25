@@ -10,7 +10,8 @@ FROM quay.io/fedora/fedora-bootc:45 AS vortexos
 # Plugin COPR (non incluso di default in fedora-bootc) + abilitazione COPR
 RUN dnf5 install -y 'dnf5-command(copr)' \
  && dnf5 copr enable -y bieszczaders/kernel-cachyos \
- && dnf5 copr enable -y avengemedia/dms
+ && dnf5 copr enable -y avengemedia/dms \
+ && dnf5 copr enable -y solopasha/hyprland
 
 # CachyOS kernel — pacchetti esistenti nel COPR: kernel-cachyos, -core, -modules
 # (kernel-cachyos-modules-core e -extra non esistono nel COPR)
