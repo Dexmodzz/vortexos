@@ -25,6 +25,7 @@ RUN mkdir -p /tmp/kernel-rpms \
       kernel-cachyos-core \
       kernel-cachyos-modules \
  && rpm -ivh --noscripts --nodeps --nosignature /tmp/kernel-rpms/kernel-cachyos*.rpm \
+ && rpm -qa | grep -E '^kernel(-core|-modules)?-[0-9]' | grep -v cachyos | xargs -r rpm -e --nodeps \
  && KVER=$(rpm -q kernel-cachyos-core --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}' | tail -1) \
  && echo "Kernel version: ${KVER}" \
  && depmod -a "${KVER}" \
