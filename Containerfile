@@ -12,19 +12,14 @@ RUN dnf5 install -y 'dnf5-command(copr)' \
  && dnf5 copr enable -y bieszczaders/kernel-cachyos \
  && dnf5 copr enable -y avengemedia/dms
 
-# CachyOS kernel — i pacchetti hanno nomi custom (kernel-cachyos-*),
-# rpm-ostree override replace non funziona con nomi diversi da kernel base.
-# Si installano direttamente e si rigenera l'initramfs manualmente.
-RUN mkdir -p /dev && mknod /dev/log c 1 9 || true
+# CachyOS kernel — pacchetti esistenti nel COPR: kernel-cachyos, -core, -modules
+# (kernel-cachyos-modules-core e -extra non esistono nel COPR)
+# dracut rigenera l'initramfs; richiede buildah --privileged in CI
 RUN dnf5 install -y \
       --setopt=install_weak_deps=False \
-      --skip-broken \
       kernel-cachyos \
       kernel-cachyos-core \
       kernel-cachyos-modules \
-      kernel-cachyos-modules-core \
-      kernel-cachyos-modules-extra \
-    || true \
  && KVER=$(rpm -q kernel-cachyos-core --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}' | tail -1) \
  && depmod -a "${KVER}" \
  && dracut --no-hostonly --kver "${KVER}" --reproducible \
