@@ -105,10 +105,17 @@ jobs:
       packages: read
 
     steps:
-      - name: Installa podman + awscli
+      - name: Installa podman
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y podman awscli
+          sudo apt-get install -y podman
+
+      - name: Installa AWS CLI v2
+        run: |
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp
+          sudo /tmp/aws/install
+          aws --version
 
       - name: Login ghcr.io (root)
         run: |
