@@ -17,11 +17,12 @@ RUN dnf5 install -y 'dnf5-command(copr)' \
 # dracut rigenera l'initramfs; richiede buildah --privileged in CI
 RUN mkdir -p /tmp/kernel-rpms \
  && dnf5 download \
+      --arch x86_64 \
       --destdir=/tmp/kernel-rpms \
       kernel-cachyos \
       kernel-cachyos-core \
       kernel-cachyos-modules \
- && rpm -ivh --noscripts --nodeps /tmp/kernel-rpms/kernel-cachyos*.rpm \
+ && rpm -ivh --noscripts --nodeps --nosignature /tmp/kernel-rpms/kernel-cachyos*.rpm \
  && KVER=$(rpm -q kernel-cachyos-core --queryformat '%{VERSION}-%{RELEASE}.%{ARCH}' | tail -1) \
  && echo "Kernel version: ${KVER}" \
  && depmod -a "${KVER}" \
