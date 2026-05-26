@@ -33,6 +33,7 @@ RUN mkdir -p /tmp/kernel-rpms \
            --kver "${KVER}" \
            --reproducible \
            --add ostree \
+           --add-drivers "xfs nvme ahci virtio_blk virtio_pci" \
            -f "/boot/initramfs-${KVER}.img" \
  && rm -rf /tmp/kernel-rpms
 

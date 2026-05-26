@@ -105,6 +105,9 @@ jobs:
       packages: read
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Installa podman e rclone
         run: |
           sudo apt-get update -qq
