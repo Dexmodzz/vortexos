@@ -188,10 +188,12 @@ jobs:
           printf '## Download\n\n**ISO:** [%s](%s)\n\nImmagine OCI: `ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}${{ matrix.suffix }}:%s`\n' \
             "${ISO_NAME}" "${PUBLIC_URL}" "${SHA}" > /tmp/release-notes.md
           gh release create "${TAG}" \
+            --repo "${{ github.repository }}" \
             --title "VortexOS${{ matrix.suffix }} ${DATE} (${SHA})" \
             --notes-file /tmp/release-notes.md \
             --latest 2>/dev/null || \
           gh release edit "${TAG}" \
+            --repo "${{ github.repository }}" \
             --notes-file /tmp/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
